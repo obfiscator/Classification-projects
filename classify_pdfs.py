@@ -1,8 +1,21 @@
+############################################
+# Goal: Based on a set of .pdf files, find other .pdfs which
+#       satisfy that tag.
+#
+# Usage: python classify_pdfs.py --tag machine_learning [--files test1.pdf,test2.pdf,...]
+#
+#        If a tag is given, the file list is taken from a pre-existing list.
+#        If a tag is not given, a file list must be specified.
+#
+############################################
+
+###############
 #!~/anaconda3/envs/pynco3.6-env/bin/python
 # -*- coding: utf-8 -*-
 
+import argparse
 import unicodecsv as csv
-import os, sys, re
+import os, sys, re, traceback
 
 from datetime import datetime
 
@@ -18,10 +31,60 @@ from collections import Counter
 import nltk
 from nltk.corpus import words
 import json
+################
+
 
 # Use a global debug variable to quickly shift between some test cases
 # and the amount of output I write.
 ldebug=True
+
+####### Parse input arguments #########
+parser = argparse.ArgumentParser(description='Classify scientific journal articles in .pdf format based on the words which appear in them.')
+parser.add_argument('--tag', dest='tag', action='store',required=False,
+                    choices=["machine_learning", "fluxcom"],
+                   help='use pre-selected articles')
+parser.add_argument('--files', dest='filelist', action='store',required=False,
+                   help='a list of files to use to build the model, in format "file1.pdf,file2.pdf,file3.pdf"')
+
+args = parser.parse_args()
+
+print("######################### INPUT VALUES #########################")
+if not args.tag and not args.filelist:
+    print("At least one of the --tag or --files flags must be used!")
+    traceback.print_stack(file=sys.stdout)
+    sys.exit(1)
+elif args.tag and args.filelist:
+    print("******* WARNING ********")
+    print("Since both --tag and --files flags are specified, I will ignore --files.")
+    print("******* END WARNING ********")
+    args.filelist=""
+#endif
+
+if args.tag and not args.filelist:
+    if args.tag == "machine_learning":
+        filelist="ogorman2018.pdf,tramontana2016.pdf,xu2018.pdf"
+    elif args.tag == "fluxcom":
+        filelist="tramontana2016.pdf,jung2020.pdf"
+    else:
+        print("Do not have any files for this tag.")
+        print("tag: ",args.tag)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
+elif not args.tag and args.filelist:
+    filelist=args.filelist
+else:
+    print("Not sure how I get here?")
+    print("tag: ",args.tag)
+    print("filelist: ",args.filelist)
+    traceback.print_stack(file=sys.stdout)
+    sys.exit(1)
+#endif
+
+files=filelist.split(",")
+print("I will train a model based on the following files: ",files)
+
+####### Define some subroutines ##########
 
 def extract_text_from_pdf(pdf_path):
 
@@ -165,12 +228,59 @@ def create_wordlist(text):
     return wordlist
 #enddef
 
+####### Execute the main code ########
+
 if __name__ == '__main__':
 
     # This needs to be done the first time the script is run, if you
     # don't already have words
     #nltk.download('words')
 
+
+    # First, build a model with our file list
+    for filename in files:
+        if filename.endswith(".pdf"): 
+            print("Processing {}".format(filename))
+            # Check to see if our processed .txt file
+            # exists.  If so, we don't want to redo all the work.
+            txt_filename=re.sub(r".pdf$",r".txt",filename)
+            try:
+                f_txt=open(txt_filename,"r")
+                f_txt.close()
+                lfound=True
+            except:
+                lfound=False
+            #endif
+            print("Do we have txt file? ",txt_filename,lfound)
+            # Do we have a processed .txt file already?
+            if not lfound:
+                #if filename == "abramowitz2012.pdf":
+                if True:
+                
+                    # Get the text in a string format.
+                    text=extract_text_from_pdf(filename)
+                    if ldebug:
+                        print(text)
+                    #endif
+                    
+                    # Create a list of words from this string.
+                    wordlist=create_wordlist(text)
+                    
+                    # Check to see if these words are good or not
+                    retained_words_freq=create_dictionary(wordlist)
+                    
+                    # Write this to a .txt file.
+                    with open(txt_filename, 'w') as file:
+                        file.write(json.dumps(retained_words_freq))
+                    #endwith
+
+                #endif
+            #endif
+        #endif
+    #endfor
+
+    traceback.print_stack(file=sys.stdout)
+    sys.exit(1)
 
     directory_in_str=os.getcwd()
     directory = os.fsencode(directory_in_str)
