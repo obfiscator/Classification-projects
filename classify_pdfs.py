@@ -38,12 +38,15 @@ import unicodecsv as csv
 import os, sys, re, traceback
 
 from sklearn import svm
+from sklearn.model_selection import cross_val_score
+
 from datetime import datetime
 
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams
 from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfdocument import PDFTextExtractionNotAllowed
 from io import BytesIO,StringIO
 
 import PyPDF2
@@ -58,7 +61,7 @@ import numpy as np
 
 # Use a global debug variable to quickly shift between some test cases
 # and the amount of output I write.
-ldebug=True
+ldebug=False
 
 ####### Parse input arguments #########
 parser = argparse.ArgumentParser(description='Classify scientific journal articles in .pdf format based on the words which appear in them.')
@@ -72,6 +75,8 @@ parser.add_argument('--nwords', dest='nwords', action='store',required=False, ty
                    help='The number of most common words in each article that we attempt to build a model with.')
 parser.add_argument('--ignore_txt', dest='ignore_txt', action='store',required=False, default="False",
                    help='If a .txt file with word frequency exists, ignore it and recalculate the frequency.')
+parser.add_argument('--create_master_txt_files', dest='create_txt', action='store',required=False, default="False",
+                   help='Loops through all the files in a directory and creates a .txt file that contains a full word frequency analysis.  This takes time, but is the basis of the rest of the analysis.')
 
 args = parser.parse_args()
 
@@ -89,11 +94,35 @@ elif args.tag and args.filelist:
 
 if args.tag and not args.filelist:
     if args.tag.lower() in ("machine_learning","ml"):
-        filelist="jung2020.pdf,ogorman2018.pdf,tramontana2016.pdf,xu2018.pdf,beer2010.pdf,yousefpour2015.pdf,pingoud2006.pdf"
-        fileclass="yes,yes,yes,yes,no,no,no"
+        # It's cleaner if I put everything in a dict, if I have a long
+        # list.  Otherwise, it can be easy to make a mistake on classification.
+        # Like this, it makes more sense to not allow the user to specify any
+        # file list.  I will do a cross validation with this whole dataset.
+        classification_dict={}
+        classification_dict["jung2020.pdf"]="yes"
+        classification_dict["ogorman2018.pdf"]="yes"
+        classification_dict["tramontana2016.pdf"]="yes"
+        classification_dict["xu2018.pdf"]="yes"
+        classification_dict["beer2010.pdf"]="no"
+        classification_dict["yousefpour2015.pdf"]="no"
+        classification_dict["pingoud2006.pdf"]="no"
+        classification_dict["pugh2018.pdf"]="no"
+        classification_dict["chapin2006.pdf"]="no"
+        classification_dict["ammann2009.pdf"]="no"
+        classification_dict["rasp2018.pdf"]="yes"
+        classification_dict["marchesini2007.pdf"]="no"
+        classification_dict["mcgrath2015.pdf"]="no"
+        classification_dict["muller2017.pdf"]="yes"
+        classification_dict["bonan2008.pdf"]="no"
+        classification_dict["thornton2002.pdf"]="no"
+        classification_dict["bannister2017.pdf"]="no"
+        classification_dict["forkel2016.pdf"]="no"
+        
     elif args.tag.lower() == "fluxcom":
-        filelist="jung2020.pdf,tramontana2016.pdf,jung2020.pdf,beer2010.pdf,yousefpour2015.pdf"
-        fileclass="yes,yes,yes,no,no,no"
+        #filelist="jung2020.pdf,tramontana2016.pdf,jung2020.pdf,beer2010.pdf,yousefpour2015.pdf"
+        #fileclass="yes,yes,yes,no,no,no"
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
     else:
         print("Do not have any files for this tag.")
         print("tag: ",args.tag)
@@ -111,9 +140,13 @@ else:
     sys.exit(1)
 #endif
 
-files=filelist.split(",")
-print("I will train a model based on the following files: ",files)
-file_class=fileclass.split(",")
+files=[]
+class_vec=[]
+for filename,classification in classification_dict.items():
+    files.append(filename)
+    class_vec.append(classification)
+#endfor
+print("I will train and evaluation a model based on the following files: ",files)
 
 nwords_retained=args.nwords
 print("I will build a model using the {} most common words from each article above.".format(nwords_retained))
@@ -127,6 +160,9 @@ else:
     lignore_txt=False
     print("If a .txt file exists for an article, I will take word frequencies from there.")
 #endif
+
+
+############################################################
 
 ####### Define some subroutines ##########
 
@@ -168,7 +204,7 @@ def extract_text_from_pdf(pdf_path):
     #endif
 #enddef
 
-def create_dictionary(wordlist):
+def create_dictionary(wordlist,take_all=False):
     # Trim down a word list, since the word list will include a lot
     # of things that aren't really words.
     # Do a first triage with words found in the WordNet database.
@@ -187,7 +223,12 @@ def create_dictionary(wordlist):
     # the Counter object has a nice feature that lets us grab the
     # most popular words.  The problem is that it does output a 
     # list instead of a dictionary.
-    wordlist=Counter(wordlist).most_common(nwords_retained)
+    if take_all:
+        # Expensive!  Pulls every word from the word list
+        wordlist=Counter(wordlist).most_common()
+    else:
+        wordlist=Counter(wordlist).most_common(nwords_retained)
+    #endif
     wordcounts={}
     for word,freq in wordlist:
         wordcounts[word]=freq
@@ -199,21 +240,6 @@ def create_dictionary(wordlist):
     # Notice that I need to convert the word to lowercase, since
     # it appears that all words in words are lowercase.
     for word in wordcounts.keys():
-
-        # There are some words that are just not helpful to us.
-        # I don't want the learning algorithm to put too much
-        # weight into these, so let's just skip them.
-
-        # Common short words
-        if word.lower() in ["the", "and", "from", "for", "but", "with", "over", "was", "were", "are", "can", "not"]:
-            continue
-        #endif
-
-        # Words that are only one or two letters long.  These could be 
-        # variable names: x, y, z.
-        if len(word) <= 2:
-            continue
-        #endif
 
         # Try a couple different variations of the word,
         # stripping off the trailing S and ES.  The way this
@@ -256,6 +282,7 @@ def create_dictionary(wordlist):
 
 def create_wordlist(text):
     # Assumes an input string of text.  Breaks this up into a list of words.
+    print("Creating the word list.")
 
     # This is far from perfect.  Units, for example, show up as words.  We
     # will do additional processing in another routine, create_fictionary.
@@ -274,72 +301,217 @@ def create_wordlist(text):
     # split the text into individual words based on whitespace
     wordlist=wordlist.split()
 
-    return wordlist
+    # There are some words that are just not helpful to us.
+    # I don't want the learning algorithm to put too much
+    # weight into these, so let's just skip them.
+
+    shortwordlist=[]
+    for word in wordlist:
+
+        # Common short words
+        if word.lower() in ["the", "and", "from", "for", "but", "with", "over", "was", "were", "are", "can", "not", "than", "also", "sit", "such"]:
+            continue
+        #endif
+
+        # Words that are only one or two letters long.  These could be 
+        # variable names: x, y, z.
+        if len(word) <= 2:
+            continue
+        #endif
+        
+        shortwordlist.append(word)
+    #endfor
+
+    return shortwordlist
+#enddef
+
+def get_retained_word_freq(filename,take_all=False):
+
+    # Check to see if our processed .txt file
+    # exists.  If so, we don't want to redo all the work.
+    txt_filename=re.sub(r".pdf$",r".txt",filename)
+    try:
+        f_txt=open(txt_filename,"r")
+        f_txt.close()
+        lfound=True
+    except:
+        lfound=False
+    #endif
+    print("Do we have txt file? ",txt_filename,lfound)
+    if lignore_txt:
+        print("Ignoring .txt files.  Redoing frequency analysis.")
+        lfound=False
+    #endif
+
+    # Do we have a processed .txt file already?
+    if not lfound:
+        # Get the text in a string format.
+        text=extract_text_from_pdf(filename)
+        if ldebug:
+            print(text)
+        #endif
+                    
+        # Create a list of words from this string.
+        wordlist=create_wordlist(text)
+        
+        # Check to see if these words are good or not
+        retained_words_freq=create_dictionary(wordlist,take_all)
+        
+        # Write this to a .txt file.
+        with open(txt_filename, 'w') as file:
+            file.write(json.dumps(retained_words_freq))
+        #endwith
+
+    else:
+        # read it in from the .txt file
+        # This is code from stackexchange to enable
+        # reading in a json file as a Python dict.
+        def js_r(filename):
+            with open(filename) as f_in:
+                return(json.load(f_in))
+            #endwith
+        #enddef
+
+        retained_words_freq=js_r(txt_filename)
+
+    #endif
+
+    # How many words do we actually have?
+    if not take_all:
+        # Sort the array based on the frequency.  We only want
+        # the most frequent words.
+        sorted_dict={}
+        iword=0
+        for w in sorted(retained_words_freq, key=retained_words_freq.get, reverse=True):
+            if iword < nwords_retained:
+                sorted_dict[w]=retained_words_freq[w]
+            #endif
+            iword=iword+1
+
+        retained_words_freq=sorted_dict
+
+    #endif
+
+    return retained_words_freq
+#enddef
+
+# I assume here that the .txt file with the full word history has already been
+# created.
+def get_retained_word_freq_from_list(filename,feature_words):
+
+    # Check to see if our processed .txt file
+    # exists.  If so, we don't want to redo all the work.
+    txt_filename=re.sub(r".pdf$",r".txt",filename)
+    try:
+        f_txt=open(txt_filename,"r")
+        f_txt.close()
+        lfound=True
+    except:
+        lfound=False
+    #endif
+    print("Do we have txt file? ",txt_filename,lfound)
+
+    # Do we have a processed .txt file already?
+    if not lfound:
+        print("Something is wrong!  I should have the .txt file at this stage.")
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    else:
+        # read it in from the .txt file
+        # This is code from stackexchange to enable
+        # reading in a json file as a Python dict.
+        def js_r(filename):
+            with open(filename) as f_in:
+                return(json.load(f_in))
+            #endwith
+        #enddef
+
+        retained_words_freq=js_r(txt_filename)
+
+    #endif
+
+    # I want to create a vector with the frequency count of all words
+    # in the passed word list.
+    output_vector=np.zeros((len(feature_words)),dtype=int)
+    for iword,word in enumerate(feature_words):
+        if word in retained_words_freq.keys():
+            output_vector[iword]=retained_words_freq[word]
+        #endif
+    #endif
+
+    return output_vector
 #enddef
 
 ####### Execute the main code ########
 
 if __name__ == '__main__':
 
+
     # This needs to be done the first time the script is run, if you
     # don't already have words
     #nltk.download('words')
 
+
+    ####### If this option is set, do something special and stop.
+    lcreate_txt=args.create_txt
+    if lcreate_txt.lower() in possible_true_values:
+        lignore_txt=True
+        print("WARNING: Creating full .txt files and stopping.")
+        for filename in files:
+            if filename.endswith(".pdf"): 
+                print("Processing {}".format(filename))
+                
+                
+                retained_words_freq=get_retained_word_freq(filename,take_all=True)
+                
+            else:
+                print("Oops!  You passed me a file that is not a .pdf file.")
+                print("Please remove the following filename from the list: ",filename)
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            #endif
+        #endfor
+
+        # Now do the same for every file in directory.
+        for file in os.listdir("."):
+            filename = os.fsdecode(file)
+            if filename.endswith(".pdf"): 
+                print("Processing {}".format(filename))
+                retained_words_freq=get_retained_word_freq(filename,take_all=True)
+            #endif
+        #endfor
+
+        sys.exit(0)
+    #endif
+    ########
+
     feature_words=[]
     master_file_word_hist=[]
 
-    # First, build a model with our file list
+    # First step is to create a .txt file with full word lists of all
+    # our evaluation files.
     for filename in files:
         if filename.endswith(".pdf"): 
-            print("Processing {}".format(filename))
-            # Check to see if our processed .txt file
-            # exists.  If so, we don't want to redo all the work.
-            txt_filename=re.sub(r".pdf$",r".txt",filename)
-            try:
-                f_txt=open(txt_filename,"r")
-                f_txt.close()
-                lfound=True
-            except:
-                lfound=False
-            #endif
-            print("Do we have txt file? ",txt_filename,lfound)
-            if lignore_txt:
-                print("Ignoring .txt files.  Redoing frequency analysis.")
-                lfound=False
-            #endif
+            print("Full processing of {}".format(filename))
 
-            # Do we have a processed .txt file already?
-            if not lfound:
-                # Get the text in a string format.
-                text=extract_text_from_pdf(filename)
-                if ldebug:
-                    print(text)
-                #endif
-                    
-                # Create a list of words from this string.
-                wordlist=create_wordlist(text)
-                
-                # Check to see if these words are good or not
-                retained_words_freq=create_dictionary(wordlist)
-                    
-                # Write this to a .txt file.
-                with open(txt_filename, 'w') as file:
-                    file.write(json.dumps(retained_words_freq))
-                #endwith
 
-            else:
-                # read it in from the .txt file
-                # This is code from stackexchange to enable
-                # reading in a json file as a Python dict.
-                def js_r(filename):
-                    with open(filename) as f_in:
-                        return(json.load(f_in))
-                    #endwith
-                #enddef
+            retained_words_freq=get_retained_word_freq(filename,take_all=True)
 
-                retained_words_freq=js_r(txt_filename)
+        else:
+            print("Oops!  You passed me a file that is not a .pdf file.")
+            print("Please remove the following filename from the list: ",filename)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+    #endfor
 
-            #endif
+    # Now, using the .txt file created in the previous step, build a model with our file list
+    for filename in files:
+        if filename.endswith(".pdf"): 
+            print("Partial processing of {}".format(filename))
+
+
+            retained_words_freq=get_retained_word_freq(filename)
 
             for word,freq in retained_words_freq.items():
                 if word not in feature_words:
@@ -361,15 +533,32 @@ if __name__ == '__main__':
     print("We have {} features: ".format(nfeatures),feature_words)
 
 
-    # Create our training dataset.
-    ntraining_files=len(files)
-    training_data=np.zeros((ntraining_files,nfeatures),dtype=int)
-    for ifile in range(ntraining_files):
-        for word,freq in master_file_word_hist[ifile].items():
-            iindex=feature_words.index(word)
-            training_data[ifile,iindex]=freq
-        #endfor
+    # Create our training/evaluation dataset.  Notice that above,
+    # we picked the more frequent words.  Now we have a long
+    # list of words taken from all the files, and we need to
+    # recalculate all the frequencies, since words that we ignored
+    # before because they were not in the top 50 or 100 words
+    # may still be present in the file.
+
+    # This is less of a concern if you use a large number of words.
+
+    nfiles=len(files)
+    te_data=np.zeros((nfiles,nfeatures),dtype=int)
+    for ifile,filename in enumerate(files):
+        if filename.endswith(".pdf"): 
+            print("Re-processing {}".format(filename))
+
+            te_data[ifile,:]=get_retained_word_freq_from_list(filename,feature_words)
+
+        else:
+            print("Oops!  You passed me a file that is not a .pdf file.")
+            print("Please remove the following filename from the list: ",filename)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
     #endfor
+
+
 
     # Now train our ML model.  Which algorithm to choose?  Microsoft
     # recommends choosing the algorithm according to what you want
@@ -388,10 +577,52 @@ if __name__ == '__main__':
     # case for us (100 features, only a few samples).  But overfitting is
     # a danger, so we should be careful with the Kernel functions.
     clf=svm.SVC()
-    clf.fit(training_data,file_class)
+    #clf.fit(training_data,file_class_train)
+    score=cross_val_score(clf, te_data, class_vec, cv=2, scoring='recall_macro')
+    print(score)
     print("Model trained.")
 
-    # Now the model is trained...try it out.
+    sys.exit()
+
+    # Now the model is trained...try it out on an evaluation dataset.
+
+    evaluation_file_word_hist=[]
+
+    # First, build a model with our training file list
+    for filename in files_eval:
+        if filename.endswith(".pdf"): 
+            print("Processing {}".format(filename))
+
+
+            retained_words_freq=get_word_frequency(filename)
+
+            evaluation_file_word_hist.append(retained_words_freq)
+
+        else:
+            print("Oops!  You passed me a file that is not a .pdf file.")
+            print("Please remove the following filename from the list: ",filename)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+    #endfor
+
+    # Create our training dataset.
+    neval_files=len(files_eval)
+    eval_data=np.zeros((neval_files,nfeatures),dtype=int)
+    for ifile in range(nt_files):
+        for word,freq in evaluation_file_word_hist[ifile].items():
+            iindex=feature_words.index(word)
+            eval_data[ifile,iindex]=freq
+        #endfor
+    #endfor
+
+    # Now test all our 
+
+
+    # Initial tests show that it doesn't work so well.  What if
+    # I use some kind of feature reduction?
+
+    
 
     for file in os.listdir("."):
         filename = os.fsdecode(file)
@@ -416,7 +647,13 @@ if __name__ == '__main__':
             # Do we have a processed .txt file already?
             if not lfound:
                 # Get the text in a string format.
-                text=extract_text_from_pdf(filename)
+                try:
+                    text=extract_text_from_pdf(filename)
+                except PDFTextExtractionNotAllowed:
+                    print("Not allowed to extract text from this file.  Skipping.")
+                    continue
+                #endif
+
                 if ldebug:
                     print(text)
                 #endif
