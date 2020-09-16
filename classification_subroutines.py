@@ -48,7 +48,7 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","PROD10","PROD100","PROD10_HARVEST","PROD100_HARVEST"]
 # I may need the product pools, but for right now I do not know how to deal
 # with a fourth non-veget axis in the array processing.
-        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
+#        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
         self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate"}
@@ -575,39 +575,82 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                 #selected_points=np.arange(0,npoints)
                 #selected_points=np.where(selected_points >= ntotal, 0, selected_points)
                 #selected_points=list(selected_points)
+            elif 2*npoints >= classified_series.shape[0]:
+
+                # Just take the first npoints points.  Not really enough
+                # points to cluster, and seems to cause problems in the
+                # kmeans algorithm below.
+                selected_timeseries=classified_series[0:npoints,:].copy()
+                selected_lat=classified_lat[0:npoints].copy()
+                selected_lon=classified_lon[0:npoints].copy()
             else:
 
                 # Extract all the timeseries with this classification level
-                kmeans = KMeans(n_clusters=npoints,random_state=0).fit(classified_series)
-                cluster_vector=kmeans.labels_
+                # Unfortunately, kmeans, and ML algorithms in general, can't
+                # deal with NaN values.  Sometimes such values pop up in these
+                # timeseries.  What do we do?
+                temp_array=np.isnan(classified_series.copy())
+                if temp_array.any():
 
-                selected_timeseries=np.zeros((npoints,classified_series.shape[1]),dtype=float)
-                selected_lat=np.zeros((npoints),dtype=float)
-                selected_lon=np.zeros((npoints),dtype=float)
+                    # Just take some at random
+                    # Above we make sure that we have more points in classified_series than
+                    # npoints, so we don't have to worry about an infinite loop.
+                    # Still, check to be sure.
+                    selected_timeseries=np.zeros((npoints,classified_series.shape[1]),dtype=float)
+                    selected_lat=np.zeros((npoints),dtype=float)
+                    selected_lon=np.zeros((npoints),dtype=float)
 
-                # Now choose one timeseries for each of the clusters
-                for ipoint in range(npoints):
+                    selected_points=[]
+                    icounter=0
+                    while len(selected_points) != npoints:
+                        random_point=np.random.randint(0,classified_series.shape[0])
+                        if random_point not in selected_points:
+                            selected_points.append(random_point)
+                        #endif
+                        icounter=icounter+1
+                        if icounter > 100*npoints:
+                            print("Trying to pick many points at random!")
+                            print("icounter = ",icounter)
+                            print("npoints = ",npoints)
+                            print("Perhaps increase the limit at this part of the code?")
+                            sys.exit(1)
+                        #endif
+                    #end while
 
-                    cluster_timeseries=classified_series[cluster_vector == ipoint]
-                    cluster_lat=classified_lat[cluster_vector == ipoint]
-                    cluster_lon=classified_lon[cluster_vector == ipoint]
+                    selected_timeseries[:,:]=classified_series[selected_points,:]
+                    selected_lat[:]=classified_lat[selected_points]
+                    selected_lon[:]=classified_lon[selected_points]
+                else:
+                    # here we can actually do kmeans
 
-                    if len(cluster_timeseries.shape) != 2:
-                        print("Problem with clusters!")
-                        print(cluster_timeseries.shape)
-                        sys.exit(1)
-                    #endif
+                    kmeans = KMeans(n_clusters=npoints,random_state=0).fit(classified_series)
+                    cluster_vector=kmeans.labels_
 
-                    # Need a random integer between 0 and the number of timeseries
-                    # we have
-                    random_point=np.random.randint(0,cluster_timeseries.shape[0])
+                    selected_timeseries=np.zeros((npoints,classified_series.shape[1]),dtype=float)
+                    selected_lat=np.zeros((npoints),dtype=float)
+                    selected_lon=np.zeros((npoints),dtype=float)
 
-                    selected_timeseries[ipoint,:]=cluster_timeseries[random_point,:]
-                    selected_lat[ipoint]=cluster_lat[random_point]
-                    selected_lon[ipoint]=cluster_lon[random_point]
+                    # Now choose one timeseries for each of the clusters
+                    for ipoint in range(npoints):
 
+                        cluster_timeseries=classified_series[cluster_vector == ipoint]
+                        cluster_lat=classified_lat[cluster_vector == ipoint]
+                        cluster_lon=classified_lon[cluster_vector == ipoint]
+                        
+                        if len(cluster_timeseries.shape) != 2:
+                            print("Problem with clusters!")
+                            print(cluster_timeseries.shape)
+                            sys.exit(1)
+                        #endif
 
-
+                        # Need a random integer between 0 and the number of timeseries
+                        # we have
+                        random_point=np.random.randint(0,cluster_timeseries.shape[0])
+                        
+                        selected_timeseries[ipoint,:]=cluster_timeseries[random_point,:]
+                        selected_lat[ipoint]=cluster_lat[random_point]
+                        selected_lon[ipoint]=cluster_lon[random_point]
+                    #endfor
                 #endif
 
                 

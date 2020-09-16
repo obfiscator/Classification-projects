@@ -42,7 +42,7 @@ parser.add_argument('--classification', dest='timeseries_flag', action='store',
 parser.add_argument('--input_file_string', dest='input_file_string', action='store',required=True,
                    help='the ORCHIDEE history files where we get the data from, in a format like \"FG1.PFTCHECK.r6811_,_1Y_stomate_history.nc\".  I assume that a string like YYYYMMDD_YYYYMMDD appears where the comma is.')
 
-parser.add_argument('--do_test', dest='do_test', action='store',default=False,
+parser.add_argument('--do_test', dest='do_test', action='store',default="False",
                    help='if TRUE, we will limit the number of timeseries we extract to ntest_points.  This makes the process faster, and is good for checking the format of output plots.')
 parser.add_argument('--data_years', dest='data_years', action='store',
                    default="1901,2241",
