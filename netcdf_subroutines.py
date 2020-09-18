@@ -376,3 +376,120 @@ def create_time_axis_from_netcdf(filename):
     return timeaxis
 
 #enddef
+
+###########################
+# Given a set of variables, annual data, and metadata, create
+# a NetCDF file that conforms to VERIFY standards
+def create_countrytot_file(sim_params):
+    print("Creating the file {}".format(sim_params.country_tot_output_filename))
+
+    # I need to create a time axis.  I assume the incoming data is annual,
+    # since it comes from a spreadsheet.  It needs to be monthly.
+
+    # Check to see the lowest and highest data years of all our variables
+    syear=sim_params.variables_in_file[0].syear
+    eyear=sim_params.variables_in_file[0].eyear
+    for ivar in range(len(sim_params.variables_in_file)):
+        if sim_params.variables_in_file[ivar].syear < syear:
+            syear=sim_params.variables_in_file[ivar].syear
+        #endif
+        if sim_params.variables_in_file[ivar].eyear > eyear:
+            eyear=sim_params.variables_in_file[ivar].eyear
+        #endif
+    #endfor
+
+    output_monthly_axis_values=create_monthly_axis(syear,eyear,1900,1,1,"","","","days")
+    output_timeaxis=time_axis(output_monthly_axis_values,"days since 1900-01-01")
+    nmonths=len(output_monthly_axis_values)
+
+
+    # Open up the output file
+    dstCT = NetCDFFile(sim_params.country_tot_output_filename,"w")
+
+    # I have four axes: country, time, strlength, and nb2 (for time_bounds)
+    time_coord=sim_params.time_refcoord_name
+    time_bounds_coord=sim_params.timebounds_refcoord_name
+    country_coord=sim_params.country_refcoord_name
+    strlength_coord=sim_params.strlen_refcoord_name
+    nb2_coord=sim_params.nb2_refcoord_name
+    ncountries=len(sim_params.variables_in_file[0].country_region_codes)
+    str_length=sim_params.strlen_value
+
+    dstCT.createDimension(time_coord, None)
+    dstCT.createDimension(country_coord, ncountries)
+    dstCT.createDimension(strlength_coord, str_length)
+    dstCT.createDimension(nb2_coord, sim_params.nb2_value)
+
+    # Quick check
+    if sim_params.time_units != output_timeaxis.timebounds_units:
+        print("Our units are not consistent!")
+        print(sim_params.time_units)
+        print(output_timeaxis.timebounds_units)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
+
+    # Now create the time and time_bounds variables and write them
+    # to the file
+    x = dstCT.createVariable(time_coord, sim_params.timecoord_type, (time_coord))
+    dstCT[time_coord].setncatts(sim_params.timecoord_atts)
+    dstCT[time_coord][:]=output_monthly_axis_values
+
+    x = dstCT.createVariable(sim_params.timebounds_refcoord_name, sim_params.timebounds_type, sim_params.timebounds_dimensions)
+    dstCT[time_bounds_coord].setncatts(sim_params.timebounds_atts)
+    dstCT[time_bounds_coord][:]=output_timeaxis.timebounds_values
+
+    # I need to output the country codes and the country names as two
+    # different variables
+    dstCT.createVariable("country_code", "S1", (country_coord, strlength_coord))
+    dstCT.createVariable("country_name", "S1", (country_coord, strlength_coord))
+    varname_class=sim_params.variables_in_file[0]
+    for idx in range(ncountries): 
+        ccode=varname_class.country_region_codes[idx]
+        cname=varname_class.country_region_data[ccode].long_name
+        #print("On ",ccode,cname,len(country_coord))
+        for jdx in range(str_length):
+            if jdx >= len(ccode):
+                if jdx >= len(cname):
+                    continue
+                else:
+                    dstCT.variables["country_name"][idx, jdx] = cname[jdx]
+                #endif
+                continue
+            #endif
+            dstCT.variables["country_code"][idx, jdx] = ccode[jdx]
+            dstCT.variables["country_name"][idx, jdx] = cname[jdx]
+        #endfor
+    #endfor
+
+    # Now we write the actual variables.  This is made more tricky because
+    # we have annual values, but we write to a monthly axis.
+    for ivar in range(len(sim_params.variables_in_file)):
+
+        varname_class=sim_params.variables_in_file[ivar]
+
+        
+        # Allocate an array to hold all our data
+        temp_array=np.zeros((nmonths,ncountries))*np.nan
+        iyear=-1
+        for imonth in range(nmonths):
+            if imonth % 12 == 0:
+                iyear=iyear+1
+            #endif
+            temp_array[imonth,:]=sim_params.variables_in_file[ivar].data[iyear,:]
+            #print(imonth,iyear)
+
+        #endfor
+
+        # Now print the variable values and all the meta information
+        dstCT.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,country_coord))
+        dstCT[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
+        dstCT[varname_class.output_varname][:,:]=temp_array[:,:]
+        print("jifoez ",ivar,sim_params.variables_in_file[ivar].output_varname,temp_array[0,3],sim_params.variables_in_file[ivar].data[0,3])
+    #endfor
+
+    # Now print some additional meta information
+
+    dstCT.close()
+
+#enddef
