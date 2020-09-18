@@ -154,7 +154,7 @@ class extracted_variable_class:
             sys.exit(1)
         #endif
 
-        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft"]:
+        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft","labile_m_n","reserve_m_n"]:
             self.time_aggregation_operation="ave"
         else:
             print("What kind of operation do you want to do for variable {} when regridding time axis?".format(self.name))
@@ -252,6 +252,15 @@ def extract_variables_from_file(sim_parms):
 
     extracted_variables={}
     timeaxis_values=[]
+    
+    # Extracting variables takes time.  I don't want to always redo it,
+    # so I'd like to have one file with all the variables I use.
+    # However, there are some classifications that I do with only
+    # certain datasets.  To avoid having the change the variable
+    # list every time, I skip over a variable if I cannot find it.  Of 
+    # course, if you try to use this variable later on, the code will
+    # crash.
+    skipped_variables=[]
 
     # We have different behavior for files that have an increment of a single
     # year and those which have an increment of multiple years.
@@ -459,6 +468,12 @@ def extract_variables_from_file(sim_parms):
             # Now copy over the information for every variable
             # Do not copy the values since we are going to add values along the time axis
             for name in variables_to_extract:
+
+                # If we haven't found a name before, we skip it.
+                if name in skipped_variables:
+                    continue
+                #endif
+
                 # Check to see which input file the variable is in
                 try:
                     srcnc = NetCDFFile(varlocation[name],"r")
@@ -473,7 +488,9 @@ def extract_variables_from_file(sim_parms):
                     print("Cannot find variable {} in file {}.".format(name,varlocation[name]))
                     print("Check capitalization and spelling.")
                     print("Variables in the file: ",srcnc.variables.keys())
-                    sys.exit(1)
+                    skipped_variables.append(name)
+                    continue
+                    #sys.exit(1)
                 #endif
 
                 variable=srcnc[name]
@@ -544,6 +561,9 @@ def extract_variables_from_file(sim_parms):
 
     # Now we allocate arrays to hold all of our data.
     for name in variables_to_extract:
+        if name in skipped_variables:
+            continue
+        #endif
         extracted_variables[name].create_data_array(combined_timeaxis.values,combined_timeaxis.timeunits)
         
     #endfor
@@ -601,6 +621,10 @@ def extract_variables_from_file(sim_parms):
 
         # Now we loop over the variables, since a variable may be in either file
         for varname in variables_to_extract:
+            if varname in skipped_variables:
+                continue
+            #endif
+
             # Open the file and get some information about coordinate names
             print("Extracting {} data from: ".format(varname),varlocation[varname])
             srcnc = NetCDFFile(varlocation[varname],"r")
@@ -637,12 +661,18 @@ def extract_variables_from_file(sim_parms):
         # What changes here?  Well, we already have the timecoord, timecoord bounds, and all the variables in arrays
         # with the old time axis.  
         for name in variables_to_extract:
+            if name in skipped_variables:
+                continue
+            #endif
             extracted_variables[name].regrid_time_axis(new_timeaxis.values,new_timeaxis.timeunits)
         #endfor
           
         # Write them to the file.  Notice we unmask the variables when we extract, but we
         # want to remask them here.
         for name in variables_to_extract:
+            if name in skipped_variables:
+                continue
+            #endif
             nanmask=np.isnan(extracted_variables[name].regridded_data_values[:])
             masked_array=np.ma.array(extracted_variables[name].regridded_data_values[:],mask=nanmask)
             dstnc[name][:]=masked_array
@@ -656,6 +686,9 @@ def extract_variables_from_file(sim_parms):
 
         # Write the data to a file
         for name in variables_to_extract:
+            if name in skipped_variables:
+                continue
+            #endif
             nanmask=np.isnan(extracted_variables[name].data_values[:])
             masked_array=np.ma.array(extracted_variables[name].data_values[:],mask=nanmask)
             dstnc[name][:]=masked_array

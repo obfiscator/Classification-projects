@@ -1,7 +1,6 @@
 # Import from standard libraries
 from netCDF4 import Dataset as NetCDFFile
 import sys
-from netcdf_subroutines import find_orchidee_coordinate_names
 import numpy as np
 import pandas as pd
 import pylab as pl
@@ -11,9 +10,14 @@ from sklearn.cluster import KMeans
 import math
 import matplotlib.gridspec as gridspec
 from textwrap import fill # legend text can be too long
-from grid import Grid
 import matplotlib as mpl
 import re
+
+# Import from local routines myself and colleagues have written
+from grid import Grid
+from netcdf_subroutines import find_orchidee_coordinate_names
+
+###################################
 
 class simulation_parameters:
     def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis):
@@ -37,7 +41,11 @@ class simulation_parameters:
         # so the code needs to figure out which variable is present.
         # Try putting both the equivalent names here, and then collapsing it
         # to a single name when the variables are read in.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR"]
+
+        # If a variable is not found, skip it.  Extracting variables takes
+        # a long time, so I don't want to have to redo it for every type
+        # of simulations.
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n"]
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 
@@ -51,7 +59,7 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
-        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate"}
+        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate"}
 
 
 
