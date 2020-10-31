@@ -1,6 +1,6 @@
 # Import from standard libraries
 from netCDF4 import Dataset as NetCDFFile
-import sys
+import sys,traceback
 import numpy as np
 import pandas as pd
 import pylab as pl
@@ -12,15 +12,16 @@ import matplotlib.gridspec as gridspec
 from textwrap import fill # legend text can be too long
 import matplotlib as mpl
 import re
+import statistics
 
 # Import from local routines myself and colleagues have written
 from grid import Grid
-from netcdf_subroutines import find_orchidee_coordinate_names
+from netcdf_subroutines import find_orchidee_coordinate_names,find_variable
 
 ###################################
 
 class simulation_parameters:
-    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis):
+    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string):
         self.pft_selected = pft_selected # Note that this is stored in
         # here with Python indexing!  So PFT6 is stored here as 5.
         self.veget_max_threshold = veget_max_threshold
@@ -30,6 +31,9 @@ class simulation_parameters:
         self.global_operation=global_operation
         self.force_annual=force_annual
         self.fix_time_axis=fix_time_axis
+        self.print_all_ts=print_all_ts
+        self.print_ts_region=print_ts_region
+        self.supp_title_string=supp_title_string
 
         # Based on the above, set some other flags.
 
@@ -42,10 +46,15 @@ class simulation_parameters:
         # Try putting both the equivalent names here, and then collapsing it
         # to a single name when the variables are read in.
 
+        # Note that "ncrcat -v LEAF_AGE_CRIT,LEAF_AGE,LEAF_TURN_c,LAI_MEAN_GS,
+        # FRUIT_M_c,WSTRESS_SEASON,NPP,GPP,LEAF_M_MAX_c,LEAF_TURN_AGEING_c 
+        # FG1.test.n_192* all.nc"
+        # is much faster than this script, but doesn't create a good time axis.
+
         # If a variable is not found, skip it.  Extracting variables takes
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n"]
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c']
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 
@@ -59,7 +68,7 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
-        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate"}
+        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate"}
 
 
 
@@ -71,6 +80,12 @@ class simulation_parameters:
             #self.variables_to_extract=["time_counter_bounds","TWBR"]
             #self.variables_in_which_file=["stomate","sechiba"]
             self.timeseries_variable="TWBR"
+        elif self.timeseries_flag in ("N_RESERVES"):
+            #self.variables_to_extract=["time_counter_bounds","TWBR"]
+            #self.variables_in_which_file=["stomate","sechiba"]
+            self.timeseries_variable="RESERVE_M_n" # We actually have
+            # two timeseries for this case.  Not yet sure the best way to
+            # make it general
         else:
             print("I do not recognize this timeseries flag in init sim param!")
             print(self.timeseries_flag)
@@ -78,39 +93,61 @@ class simulation_parameters:
         #endif
 
         # LAI thresholds suggested by Sebastiaan:
+        # No LAI for PFT 0 (bare soil)
         if pft_selected == 1: # Remember that Python arrays start from 0!
-            self.lai_good_threshold=5.0
+            #self.lai_good_threshold=5.0   8400 pixels out of 14000 are classifed as dark green on Trendyv9 for Tag 2.2
+            self.lai_good_threshold=6.0
         elif pft_selected == 2: 
-            self.lai_good_threshold=5.0
+            #self.lai_good_threshold=5.0 # original
+            self.lai_good_threshold=4.0  # modified for TAG 2.2
         elif pft_selected == 3: 
             self.lai_good_threshold=4.0
         elif pft_selected == 4: 
-            self.lai_good_threshold=2.0
+            #self.lai_good_threshold=2.0 # original 
+            self.lai_good_threshold=3.0 # modified for TAG 2.2
         elif pft_selected == 5: 
-            self.lai_good_threshold=4.0
+            #self.lai_good_threshold=4.0 
+            self.lai_good_threshold=2.5 # modified to give TAG 2.1 more green
         elif pft_selected == 6: 
-            self.lai_good_threshold=3.0
+            self.lai_good_threshold=3.0 
         elif pft_selected == 7: 
-            self.lai_good_threshold=3.0
+#            self.lai_good_threshold=3.0 # original
+            self.lai_good_threshold=1.5 # modified for TAG 2.2
         elif pft_selected == 8: 
-            self.lai_good_threshold=2.0
+            #self.lai_good_threshold=2.0 # original
+            self.lai_good_threshold=1.5 # modified for TAG 2.2
         elif pft_selected == 9: 
-            self.lai_good_threshold=3.0
+#            self.lai_good_threshold=3.0 # original
+            self.lai_good_threshold=2.0 # modified for TAG 2.2
         elif pft_selected == 10: 
-            self.lai_good_threshold=3.0
+#            self.lai_good_threshold=3.0 # original
+            self.lai_good_threshold=2.0 # modified for TAG 2.2
         elif pft_selected == 11: 
-            self.lai_good_threshold=3.0
+#            self.lai_good_threshold=3.0 # original
+            self.lai_good_threshold=2.5 # modified for TAG 2.2
         elif pft_selected == 12: 
             self.lai_good_threshold=3.0
         elif pft_selected == 13: 
-            self.lai_good_threshold=2.0 # may be too high?
+#            self.lai_good_threshold=2.0 # original
+            self.lai_good_threshold=1.5 # modified for TAG 2.2
         elif pft_selected == 14: 
-            self.lai_good_threshold=2.0 # may be too high?
+#            self.lai_good_threshold=2.0 # original
+            self.lai_good_threshold=1.5 # modified for TAG 2.2
         else:
             print("Not sure what to do with this PFT in sim_params def!")
             print(pft_selected)
             sys.exit(1)
         #endif
+
+        # The basic strategy for ideal growth is to have an LAI threshold
+        # and check to see how many years are above that.  That
+        # threshold is multiplied by this number to see what pixels
+        # have good growth (for species not in the core of their range).
+        self.good_growth=0.75 
+
+        # Below this value, we may consider an LAI value to be zero in
+        # certain criteria
+        self.zero_threshold=0.05
 
         # What fraction of our datapoints need to be above this in order for it to be good?
         self.lai_high_threshold_good_fraction=0.8
@@ -128,7 +165,7 @@ class simulation_parameters:
         #endif
 
         # What fraction of our datapoints need to be below this in order for it to be bad?
-        self.lai_low_threshold_bad_fraction=0.5
+        self.lai_low_threshold_bad_fraction=0.9
         self.lai_low_threshold_good_fraction=0.1 # this can be good
 
         # How big of LAI jumps do we start getting concerned about?
@@ -149,7 +186,7 @@ class simulation_parameters:
         #endif
 
         # Above which fraction of values are NaN do we flag it as bad?
-        self.nan_bad_threshold=0.1
+        self.nan_bad_threshold=0.05
         # Below which fraction of values are NaN can we accept it as good?
         self.nan_good_threshold=0.01
 
@@ -159,7 +196,9 @@ class simulation_parameters:
         self.twbr_high_threshold_bad_fraction=0.1
         self.twbr_low_threshold_good_fraction=0.5
 
-
+        # This is for the nitrogen reserve pools
+        self.nreserves_ndecades=5
+        self.nreserves_good_fraction=0.8
 
     #enddef
 
@@ -179,6 +218,21 @@ class simulation_parameters:
             self.sim_name=self.input_file_name_start
         #endif
 
+        # This the string we use in naming the output files.
+        self.output_file_string=self.sim_name+self.supp_title_string
+
+        # Figure out which tagged version this is, also for plotting:
+        if self.sim_name in ["FG2low.ORCH21r5695"]:
+            self.tag_version="2.1"
+        elif self.sim_name in ["FG2.TRENDY9.S3"]:
+            self.tag_version="2.2"
+        elif self.sim_name in ["FG2-r6830-param1","S3-r6863-TRENDY-twodeg"]:
+            self.tag_version="3.0"
+        else:
+            self.tag_version="4.0"
+        #endif
+        print("Simulation {} is TAG {}.".format(self.sim_name,self.tag_version))
+
         # This is where we put the maps of every variable that
         # we extract, in NetCDF format
         if year_increment == 1:
@@ -187,51 +241,71 @@ class simulation_parameters:
             self.condensed_nc_file_name="extracted_variables_{}{}.{}.nc".format(input_file_name_start,syear,eyear)
         #endif
 
-        # Set some additional information, now that we have the input file
-        # names
-        self.set_classification_filename_information()
+        # Figure out a window where we print timeseries
+        self.nlat_window,self.slat_window,self.wlon_window,self.elon_window=parse_latlon_string(self.print_ts_region)
 
     #enddef
 
+    # In order for this to work, the NC file must already exist!
     def set_classification_filename_information(self):
 
+        # From here, I want to check some of the variable names.  They
+        # may be different in different tagged versions.  For example,
+        # LAI in TAG 2.1 is the LAI averaged over the full year.  
+        # In TAG 4.0, the LAI averaged over the full year is LAI_MEAN.
+        # But in theory they measure the same thing.
+        srcnc = NetCDFFile(self.condensed_nc_file_name,"r")
+        veget_max_name=find_variable(["VEGET_MAX","VEGET_COV_MAX"],srcnc,False,"",lcheck_units=False)
+        lai_mean_name=find_variable(["LAI","LAI_MEAN"],srcnc,False,"",lcheck_units=False)
+        #lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
+        lai_max_name=find_variable(["LAI","LAI_MAX"],srcnc,False,"",lcheck_units=False)
+        self.set_variable_names(veget_max_name,lai_mean_name,lai_max_name)
+        srcnc.close()
 
         # These names will depend on the analysis we are doing
         if self.timeseries_flag == "LAI_MEAN1":
 
             # For the name of the file with the map
-            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
             # And the title of the map itself
-            self.classified_map_title="{}\nEach pixel classified according to the LAI timeseries for PFT {}".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe {} timeseries for PFT {}".format(self.sim_name,self.tag_version,self.lai_mean_name,self.pft_selected+1)
 
             # For the name of the file with the histograms of the classifiers
-            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
 
             # For the name of the file with the timeseries
-            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
+
 
             # This is a subtitle that identifies what we've done
             # a little better
             self.plot_subtitle=[]
-            self.plot_subtitle.append("PFT {}, classification based only on LAI_MEAN\nA bad pixel has at least {}% of annual LAI_MEAN values below {},\n    AND no more than {}% of annual LAI_MEAN values above {},\n    OR more than {}% of the annual LAI_MEAN values are NaNs.".format(self.pft_selected+1,self.lai_low_threshold_bad_fraction*100.0,self.lai_bad_threshold,self.lai_high_threshold_bad_fraction*100.0,self.lai_good_threshold,self.nan_bad_threshold*100.0))
-            self.plot_subtitle.append("PFT {}, classification based only on LAI_MEAN\nA bad pixel has at least {}% of annual LAI_MEAN values below {},\n    AND no more than {}% of annual LAI_MEAN values above {},\n    OR more than {}% of the annual LAI_MEAN values are NaNs.".format(self.pft_selected+1,self.lai_low_threshold_bad_fraction*100.0,self.lai_bad_threshold,self.lai_high_threshold_bad_fraction*100.0,self.lai_good_threshold,self.nan_bad_threshold*100.0))
+            # Level 1
+            #self.plot_subtitle.append("Problem pixels for PFT {0}, classification based only on {1}\nA pixel in this category has more than {2}% of the annual {1} values as NaNs.".format(self.pft_selected+1,self.lai_mean_name,self.nan_bad_threshold*100.0))
+#            self.plot_subtitle.append("Problem pixels for PFT {0}, classification based only on {1}\nA pixel in this category has more than {2}% of the annual {1} values as NaNs\n    OR more than {2}% of the annual {1} values as 0.0.".format(self.pft_selected+1,self.lai_mean_name,self.nan_bad_threshold*100.0))
+            self.plot_subtitle.append("Problem pixels for PFT {0}, classification based only on {1}\nA pixel in this category has more than {2}% of the annual {1} values as NaNs\n    OR more than {2}% of the annual {1} values as 0.0\n    OR more than {2}% of the annual {1} values less than {3}.".format(self.pft_selected+1,self.lai_mean_name,self.nan_bad_threshold*100.0,self.zero_threshold))
+            # Level 2
+            self.plot_subtitle.append("Weak growth for PFT {0}, classification based only on {1}\nPixels in this category has at least {2}% of annual {1} values below {3},\n    AND no more than {4}% of annual {1} values above {5}".format(self.pft_selected+1,self.lai_mean_name,self.lai_low_threshold_bad_fraction*100.0,self.lai_bad_threshold,self.lai_high_threshold_bad_fraction*100.0,self.lai_good_threshold))
 
-            self.plot_subtitle.append("PFT {}, classification based only on LAI_MEAN\nA good pixel has at least {}% of annual LAI_MEAN values above {},\n    AND no more than {}% of annual LAI_MEAN values below {},\n    AND no more than {}% of the annual LAI_MEAN values are NaNs.".format(self.pft_selected+1,self.lai_high_threshold_good_fraction*100.0,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold*100.0))
-            self.plot_subtitle.append("PFT {}, classification based only on LAI_MEAN\nA good pixel has at least {}% of annual LAI_MEAN values above {},\n    AND no more than {}% of annual LAI_MEAN values below {},\n    AND no more than {}% of the annual LAI_MEAN values are NaNs.".format(self.pft_selected+1,self.lai_high_threshold_good_fraction*100.0,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold*100.0))
-            self.plot_subtitle.append("PFT {}, classification based only on LAI_MEAN\nA good pixel has at least {}% of annual LAI_MEAN values above {},\n    AND no more than {}% of annual LAI_MEAN values below {},\n    AND no more than {}% of the annual LAI_MEAN values are NaNs.".format(self.pft_selected+1,self.lai_high_threshold_good_fraction*100.0,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold*100.0))
+            # Level 3
+            self.plot_subtitle.append("PFT {}, classification based only on {}\nPixels in this category do not satisfy the rules for any of the rest of the levels.".format(self.pft_selected+1,self.lai_mean_name))
+            # Level 4
+            self.plot_subtitle.append("Good growth for PFT {0}, classification based only on {1}\nA pixel in this category has at least {2}% of annual {1} values above {3},\n    AND no more than {4}% of annual {1} values below {5}".format(self.pft_selected+1,self.lai_mean_name,self.lai_high_threshold_good_fraction*100.0*self.good_growth,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold))
+            # Level 5
+            self.plot_subtitle.append("Excellent growth for PFT {0}, classification based only on {1}\nA pixel in this category has at least {2}% of annual {1} values above {3},\n    AND no more than {4}% of annual {1} values below {5},\n    AND no more than {6}% of the annual {1} values are NaNs.".format(self.pft_selected+1,self.lai_mean_name,self.lai_high_threshold_good_fraction*100.0,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold*100.0))
 
         elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
 
             # For the name of the file with the map
-            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
             # And the title of the map itself
             self.classified_map_title="Each pixel classified according to the LAI timeseries for PFT {}".format(self.pft_selected+1)
 
             # For the name of the file with the histograms of the classifiers
-            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
 
             # For the name of the file with the timeseries
-            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
 
             # This is a subtitle that identifies what we've done
             # a little better
@@ -249,15 +323,15 @@ class simulation_parameters:
         elif self.timeseries_flag == "LAI_MEAN2":
 
             # For the name of the file with the map
-            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN_IND.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN_IND.png".format(self.output_file_string,self.pft_selected+1)
             # And the title of the map itself
             self.classified_map_title="Each pixel classified according to the LAI timeseries for PFT {}".format(self.pft_selected+1)
 
             # For the name of the file with the timeseries
-            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN_IND.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEAN_IND.png".format(self.output_file_string,self.pft_selected+1)
 
             # For the name of the file with the histograms of the classifiers
-            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN_IND.png".format(self.input_file_name_start,self.pft_selected+1)
+            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN_IND.png".format(self.output_file_string,self.pft_selected+1)
 
             # This is a subtitle that identifies what we've done
             # a little better
@@ -267,15 +341,15 @@ class simulation_parameters:
         elif self.timeseries_flag == "TWBR":
 
             # For the name of the file with the map
-            self.classified_map_filename="classified_map_{}TWBR.png".format(self.input_file_name_start)
+            self.classified_map_filename="classified_map_{}TWBR.png".format(self.output_file_string)
             # And the title of the map itself
             self.classified_map_title="{}\nEach pixel classified according to the TWBR timeseries".format(self.sim_name)
 
             # For the name of the file with the timeseries
-            self.classified_timeseries_filename="classified_timeseriesXXXX_{}TWBR.png".format(self.input_file_name_start)
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}TWBR.png".format(self.output_file_string)
 
             # For the name of the file with the histograms of the classifiers
-            self.class_histogram_filename="classification_histogram_{}TWBR.png".format(self.input_file_name_start)
+            self.class_histogram_filename="classification_histogram_{}TWBR.png".format(self.output_file_string)
 
 
             # This is a subtitle that identifies what we've done
@@ -286,6 +360,33 @@ class simulation_parameters:
             self.plot_subtitle.append(self.plot_subtitle[0])
             self.plot_subtitle.append(self.plot_subtitle[0])
             self.plot_subtitle.append("Classification based only on TWBR\nA good pixel has at least {}% of annual TWBR values below a magnitude of {},\n    AND less than {}% of annual TWBR values above a magnitude of {}.".format(self.twbr_low_threshold_good_fraction*100.0,self.twbr_low_threshold,self.twbr_high_threshold_bad_fraction*100.0,self.twbr_high_threshold))
+
+            #####
+        elif self.timeseries_flag == "N_RESERVES":
+
+            # For the name of the file with the map
+            self.classified_map_filename="classified_map_{}PFT{}_NRESERVES.png".format(self.output_file_string,self.pft_selected+1)
+            # And the title of the map itself
+            self.classified_map_title="Each pixel classified according to the nitrogen reserve pools (labile, reserve) timeseries for PFT {}".format(self.pft_selected+1)
+
+            # For the name of the file with the histograms of the classifiers
+            self.class_histogram_filename="classification_histogram_{}PFT{}_NRESERVES.png".format(self.output_file_string,self.pft_selected+1)
+
+            # For the name of the file with the timeseries
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_NRESERVES.png".format(self.output_file_string,self.pft_selected+1)
+
+            # This is a subtitle that identifies what we've done
+            # a little better
+            self.plot_subtitle=[]
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools. A red pixel has a series of at least {} continually increasing decennial mean values outside the variance.".format(self.pft_selected+1,self.nreserves_ndecades))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools. An orange pixel has a series of {} decennial means where the odd values are increasing and outside the variance of previous odd values.  This catches timeseries rising more slowly than the red pixels.".format(self.pft_selected+1,self.nreserves_ndecades))
+
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nThis is a pixel that doesn't fall in any other category.".format(self.pft_selected+1))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nThis color should not be used.".format(self.pft_selected+1))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nA green pixel has at least {}% of decenniel mean N_RESERVE+N_LABILE values within the varience of the first decade.".format(self.pft_selected+1, self.nreserves_good_fraction*100.0))
+
+
+
 
         else:
             print("Do not recognize timeseries flag in set_classification_filename_information!")
@@ -310,6 +411,12 @@ class simulation_parameters:
         elif self.timeseries_flag == "TWBR":
             self.timeseries_variable="TWBR"
 
+        elif self.timeseries_flag == "N_RESERVES":
+
+            self.timeseries_variable="RESERVE_M_n" # We actually have
+            # two timeseries for this case.  Not yet sure the best way to
+            # make it general
+
         else:
             print("Do not recognize timeseries flag in set_variable_names!")
             print(self.timeseries_flag)
@@ -319,67 +426,6 @@ class simulation_parameters:
     #enddef
 
 #endclass
-
-
-# This loops through all our timeseries and evaluates them against
-# some criteria.  These criteria depend on the variable we have extracted.
-def create_classification_criteria(timeseries_array,sim_params):
-
-    timeseries_variable=sim_params.timeseries_variable
-    pft_selected=sim_params.pft_selected
-
-    print("Creating classification criteria for {}.".format(timeseries_variable))
-
-    nsamples=timeseries_array.shape[0]
-    
-    if sim_params.timeseries_flag in ["LAI_MEAN1"]:
-
-        # How many different criteria?
-        # 0 : Maximum value
-        # 1 : Number of times below a threshold
-        # 2 : Number of NaNs
-
-        classification_array=np.zeros((nsamples,3))
-
-        # Loop through all the timeseries and evaluate them
-        for isample in range(nsamples):
-
-            ### not sure these are useful right now
-            # 0 : Number of NaN values
-            #temp_array=np.isnan(timeseries_array[isample,:])
-            #classification_array[isample,0]=np.sum(temp_array)
-
-            # 1 : Number of Zero values (actually below 0.01)
-            #temp_array=np.where(timeseries_array[isample,:] < 0.01, True, False)
-            #classification_array[isample,1]=np.sum(temp_array)
-            #################################
-
-            # 0 : Maximum value.  
-            classification_array[isample,0]=np.nanmax(timeseries_array[isample,:])
-            # 1 : Number of times below a threshold
-            temp_array=np.where(timeseries_array[isample,:] < sim_params.lai_bad_threshold, True, False)
-            classification_array[isample,1]=np.sum(temp_array)
-
-            # I want to add something with IND here, too.
-
-            
-        #endif
-
-        # Now print out a few summary statistics
-        classificationdf=pd.DataFrame(data=classification_array)
-        classificationdf.hist(bins=30,figsize=(9,9))
-        pl.suptitle("Histogram for each classification variable")
-        plt.savefig(sim_params.class_histogram_filename)
-        plt.close()
-
-    else:
-        print("I don't know how to create criteria for this variable!")
-        sys.exit(1)
-    #endif
-
-    return classification_array
-
-#enddef
 
 # This loops through all our classification criteria and tries to classify
 # every point.  I aim for "good", "ok", and "bad".
@@ -414,23 +460,26 @@ def classify_observations(classification_array,sim_params):
             # "Good" is where all criteria are positive.  "Bad" is where all are negative.  "Semi-good" is where
             # at least one is positve, and none are negative.  "Semi-bad" is where at least one is negative, and none
             # are positive.  "OK" is everything else.
-            # 0 : Fraction of annual LAI_MEAN values above a threshold
+            # 0 : Fraction of annual LAI_MEAN values above an ideal threshold
             # 1 : Fraction of annual LAI_MEAN values below a different threshold
-            # 2 : Fraction of annual LAI_MEAN values are NaNs.
+            # 2 : Fraction of annual LAI_MEAN values are NaNs
+            # 3 : Fraction of timesteps when LAI_MEAN changes by more than 0.2
+            # 4 : Fraction of annual LAI_MEAN values are zero
+            # 5 : Fraction of annual LAI_MEAN values are close to zero
+            # 6 : Fraction of annual LAI_MEAN values above a good threshold
 
-            # The last criteria is essential.  If there are a lot of NaNs, we automatically classify it as bad, since it can
-            # mess up the rest of the calculations.
-
-            if classification_array[isample,0] > lai_high_threshold_good_fraction and classification_array[isample,2] <= sim_params.nan_good_threshold and classification_array[isample,1] < lai_low_threshold_good_fraction:
+            if (classification_array[isample,0] > lai_high_threshold_good_fraction) and (classification_array[isample,1] < lai_low_threshold_good_fraction) and (classification_array[isample,2] < sim_params.nan_good_threshold):
                 # Good
                 classification_vector[isample]=5
-            elif ((classification_array[isample,0] < lai_high_threshold_bad_fraction) and (classification_array[isample,1] > lai_low_threshold_bad_fraction)) or (classification_array[isample,2] > sim_params.nan_bad_threshold):
+#            elif (classification_array[isample,2] > sim_params.nan_bad_threshold):
+#            elif (classification_array[isample,2] > sim_params.nan_bad_threshold) or (classification_array[isample,4] > sim_params.nan_bad_threshold):
+            elif (classification_array[isample,2] > sim_params.nan_bad_threshold) or (classification_array[isample,4] > sim_params.nan_bad_threshold) or (classification_array[isample,5] > sim_params.nan_bad_threshold):
                 # Bad
                 classification_vector[isample]=1
-            elif (classification_array[isample,0] > lai_high_threshold_good_fraction or classification_array[isample,2] <= sim_params.nan_good_threshold or classification_array[isample,1] < lai_low_threshold_good_fraction) and (not classification_array[isample,0] < lai_high_threshold_bad_fraction and not classification_array[isample,1] > lai_low_threshold_bad_fraction):
+            elif (classification_array[isample,6] > lai_high_threshold_good_fraction) and (classification_array[isample,1] < lai_low_threshold_good_fraction) and (classification_array[isample,2] < sim_params.nan_good_threshold):
                 # Semi-good
                 classification_vector[isample]=4
-            elif (classification_array[isample,0] < lai_high_threshold_bad_fraction or classification_array[isample,1] > lai_low_threshold_bad_fraction) and (not classification_array[isample,0] > lai_high_threshold_good_fraction and not classification_array[isample,2] <= sim_params.nan_good_threshold and not classification_array[isample,1] < lai_low_threshold_good_fraction):
+            elif (classification_array[isample,0] < lai_high_threshold_bad_fraction and classification_array[isample,1] > lai_low_threshold_bad_fraction):
                 # Semi-bad
                 classification_vector[isample]=2
             else:
@@ -498,6 +547,32 @@ def classify_observations(classification_array,sim_params):
             #endif
         #endfor
 
+    elif sim_params.timeseries_flag == "N_RESERVES":
+
+        for isample in range(nsamples):
+
+            # For this classification, only use three colors.
+            # "Good": Criterion 2 is above a certain threshold and criterion 0 is 0
+            # "Semi-good": Not used
+            # "OK" : Everything else.
+            # "Semi-bad": Not used.
+            # "Bad": Criterion 0 has a value of 1
+            # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
+            # 1 : Not implemented for the moment
+            # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
+
+            if classification_array[isample,0] == 0.0 and (classification_array[isample,0] > sim_params.nreserves_good_fraction):
+                # Good
+                classification_vector[isample]=5
+            elif classification_array[isample,0] == 1.0:
+                # Bad
+                classification_vector[isample]=1
+            else:
+                # Ok?  Unclassifiable
+                classification_vector[isample]=3
+            #endif
+        #endfor
+
     else:
         print("Cannot yet classify points with this flag in classify_observations!")
         print(sim_params.timeseries_flag)
@@ -508,7 +583,7 @@ def classify_observations(classification_array,sim_params):
 #enddef
 
 # Choose some of the classified points at random and plot them as timeseries
-def plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_params,syear,eyear):
+def plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_params,syear,eyear,classification_array):
 
         
 
@@ -545,7 +620,6 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
         ntotal=np.sum(temp_array)
         print("Have a total of {} timeseries at this level.".format(ntotal))
 
-
         # Either we have timeseries to plot, or we don't.  If don't, we create
         # a spacefiller graph, since I want to make collections of graphs in 
         # an automated fashion afterwards and not having a file messes up the
@@ -572,6 +646,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
             classified_series=timeseries_array[classification_vector == ilevel]
             classified_lat=timeseries_lat[classification_vector == ilevel]
             classified_lon=timeseries_lon[classification_vector == ilevel]
+            classified_array=classification_array[classification_vector == ilevel,:]
 
             # I need these points to be as distinct as possible
             if npoints >  classified_series.shape[0]:
@@ -580,6 +655,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                 selected_timeseries=classified_series.copy()
                 selected_lat=classified_lat.copy()
                 selected_lon=classified_lon.copy()
+                selected_class_criteria=classified_array.copy()
                 #selected_points=np.arange(0,npoints)
                 #selected_points=np.where(selected_points >= ntotal, 0, selected_points)
                 #selected_points=list(selected_points)
@@ -591,6 +667,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                 selected_timeseries=classified_series[0:npoints,:].copy()
                 selected_lat=classified_lat[0:npoints].copy()
                 selected_lon=classified_lon[0:npoints].copy()
+                selected_class_criteria=classified_array.copy()
             else:
 
                 # Extract all the timeseries with this classification level
@@ -607,6 +684,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                     selected_timeseries=np.zeros((npoints,classified_series.shape[1]),dtype=float)
                     selected_lat=np.zeros((npoints),dtype=float)
                     selected_lon=np.zeros((npoints),dtype=float)
+                    selected_class_criteria=np.zeros((npoints,classification_array.shape[1]),dtype=float)
 
                     selected_points=[]
                     icounter=0
@@ -628,6 +706,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                     selected_timeseries[:,:]=classified_series[selected_points,:]
                     selected_lat[:]=classified_lat[selected_points]
                     selected_lon[:]=classified_lon[selected_points]
+                    selected_class_criteria[:,:]=classified_array[selected_points,:]
                 else:
                     # here we can actually do kmeans
 
@@ -637,6 +716,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                     selected_timeseries=np.zeros((npoints,classified_series.shape[1]),dtype=float)
                     selected_lat=np.zeros((npoints),dtype=float)
                     selected_lon=np.zeros((npoints),dtype=float)
+                    selected_class_criteria=np.zeros((npoints,classification_array.shape[1]),dtype=float)
 
                     # Now choose one timeseries for each of the clusters
                     for ipoint in range(npoints):
@@ -644,11 +724,17 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                         cluster_timeseries=classified_series[cluster_vector == ipoint]
                         cluster_lat=classified_lat[cluster_vector == ipoint]
                         cluster_lon=classified_lon[cluster_vector == ipoint]
-                        
+                        cluster_class_criteria=classified_array[cluster_vector == ipoint,:]
+
                         if len(cluster_timeseries.shape) != 2:
                             print("Problem with clusters!")
                             print(cluster_timeseries.shape)
                             sys.exit(1)
+                        #endif
+
+                        # This happens, but rarely, and for unknown reasons
+                        if cluster_timeseries.shape[0] == 0:
+                            continue
                         #endif
 
                         # Need a random integer between 0 and the number of timeseries
@@ -658,6 +744,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                         selected_timeseries[ipoint,:]=cluster_timeseries[random_point,:]
                         selected_lat[ipoint]=cluster_lat[random_point]
                         selected_lon[ipoint]=cluster_lon[random_point]
+                        selected_class_criteria[:,:]=cluster_class_criteria[random_point,:]
                     #endfor
                 #endif
 
@@ -677,6 +764,14 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
             
             for ipoint in range(selected_timeseries.shape[0]):
                 legend_string=create_latlon_string(selected_lat[ipoint],selected_lon[ipoint])
+                #### This is just for debugging.
+                #filename="{}_Class{}.txt".format(legend_string,ilevel)
+                #np.savetxt(filename,selected_class_criteria[ipoint,:])
+                #file = open(filename,"a") 
+                #for ival,val in enumerate(xvalues):
+                #    file.write("{},{}\n".format(val,selected_timeseries[ipoint,ival]))
+                #endfor
+                ####
                 p1=ax1.plot(xvalues,selected_timeseries[ipoint,:], linestyle=linestyles[ilinestyle], marker=markersymbols[imarkerstyle],color=colors[icolor],label=legend_string)
                 legend_axes.append(p1)
                 legend_titles.append(legend_string)
@@ -712,7 +807,33 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
             ax2.text(0.1,0.02,sim_params.plot_subtitle[ilevel-1],transform=fig.transFigure,fontsize=12)
             ax2.set_axis_off()
             fig.savefig(sim_params.classified_timeseries_filename.replace("XXXX","{}".format(ilevel)),dpi=300)
-            plt.close(fig)     
+            plt.close(fig)
+
+            # Record all of these timeseries
+            if sim_params.print_all_ts:
+                all_classifications=np.zeros((classification_array.shape[1],ntotal))
+                all_timeseries=np.zeros((len(xvalues),ntotal))
+                #all_timeseries[:,0]=xvalues # want to create a dataframe with all values
+
+                timeseries_names=[]
+                #timeseries_names.append("Year")
+                for ipoint in range(classified_series.shape[0]):
+                    legend_string=create_latlon_string(classified_lat[ipoint],classified_lon[ipoint])
+                    timeseries_names.append(legend_string)
+
+                    all_timeseries[:,ipoint]=classified_series[ipoint,:]
+                    all_classifications[:,ipoint]=classification_array[ipoint,:]
+                #endfor
+                
+                timeseriesdf=pd.DataFrame(data=all_timeseries,columns=timeseries_names)
+                timeseriesdf.to_csv(path_or_buf="classified_ts_level_{}.csv".format(ilevel),sep=",")
+
+                classificationdf=pd.DataFrame(data=all_classifications,columns=timeseries_names)
+                classificationdf.to_csv(path_or_buf="classication_criteria_ts_level_{}.csv".format(ilevel),sep=",")                         
+                
+
+            #endif
+     
         else:
             fig=plt.figure(2,figsize=(13, 8))
             ax1 = fig.add_subplot(111)
@@ -784,6 +905,62 @@ def create_latlon_string(lat,lon):
     return "{},{}".format(latstring,lonstring)
 #endif
 
+# I want to parse a string that looks like 35N,75N,-20E,40E
+# The output is four fields: northern, southern, western, and eastern
+# borders of a rectangle, in degrees north and east (negative values 
+# indicate south and west)
+def parse_latlon_string(latlon_string):
+
+    case1_ns=re.compile('(.+)N,(.+)N,.+,.+')
+    case2_ns=re.compile('(.+)S,(.+)N,.+,.+')
+    case3_ns=re.compile('(.+)S,(.+)S,.+,.+')
+    #case4_ns=re.compile('()N,()S') # not possible!
+    
+    if case1_ns.search(latlon_string):
+        m=case1_ns.search(latlon_string)
+        nlat_window=float(m[2])
+        slat_window=float(m[1])
+    elif case2_ns.search(latlon_string):
+        m=case2_ns.search(latlon_string)
+        nlat_window=float(m[2])
+        slat_window=-float(m[1])
+    elif case3_ns.search(latlon_string):
+        m=case3_ns.search(latlon_string)
+        nlat_window=-float(m[2])
+        slat_window=-float(m[1])
+    else:
+        print("Lat/lon string doesn't make sense!  ",latlon_string)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
+
+    case1_ew=re.compile('.+,.+,(.+)E,(.+)E')
+    case2_ew=re.compile('.+,.+,(.+)W,(.+)E')
+    case3_ew=re.compile('.+,.+,(.+)W,(.+)W')
+    #case4_ew=re.compile('()N,()S') # possible...but I ignore it
+    
+    if case1_ew.search(latlon_string):
+        m=case1_ew.search(latlon_string)
+        wlon_window=float(m[1])
+        elon_window=float(m[2])
+    elif case2_ew.search(latlon_string):
+        m=case2_ew.search(latlon_string)
+        wlon_window=-float(m[1])
+        elon_window=float(m[2])
+    elif case3_ew.search(latlon_string):
+        m=case3_ew.search(latlon_string)
+        wlon_window=-float(m[1])
+        elon_window=-float(m[2])
+    else:
+        print("Lat/lon string doesn't make sense!  ",latlon_string)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
+
+    print("Plotting timeseries in the following window: {}N,{}N,{}E,{}E".format(slat_window,nlat_window,wlon_window,elon_window))
+    return nlat_window,slat_window,wlon_window,elon_window
+#endif
+
 # Choose some of the classified points at random and plot them as timeseries
 def map_classified_pixels(classification_vector,timeseries_lat,timeseries_lon,level_colors,colors_by_level,sim_params):
 
@@ -813,7 +990,7 @@ def map_classified_pixels(classification_vector,timeseries_lat,timeseries_lon,le
         for ilon in range(nlons):
 
             # This will depend on the classification scheme.  
-            if sim_params.timeseries_flag == "LAI_MEAN1":
+            if sim_params.timeseries_flag in ("LAI_MEAN1","N_RESERVES"):
                 if not np.ma.is_masked(srcnc[veget_max_name][0, pft_selected, ilat, ilon]):
                     # Leave it blank if no PFT is there
                     if srcnc[veget_max_name][0, pft_selected, ilat, ilon] == 0.0:
@@ -878,9 +1055,26 @@ def extract_and_calculate_classifiction_metrics(sim_params):
     # probably because I have a subroutine call for every point?  Unsure.
     npoints=0
     for ilat,vlat in enumerate(srcnc[latcoord][:]):
+        
+        # Scanning latitude takes a while for higher resolution grids.
+        # Don't even bother if it's outside of the window where we want to print
+        # timeseries.
+        if sim_params.print_all_ts:
+            if vlat > sim_params.nlat_window or vlat < sim_params.slat_window:
+                continue
+            #endif
+        #endif
+
         print("Scanning latitude for points: ",vlat)
         for ilon,vlon in enumerate(srcnc[loncoord][:]):
     
+            # Scanning longitude also takes a while.
+            if sim_params.print_all_ts:
+                if vlon > sim_params.elon_window or vlon < sim_params.wlon_window:
+                    continue
+                #endif
+            #endif
+
             if sim_params.do_test:
                 if npoints > sim_params.ntest_points:
                     continue
@@ -915,13 +1109,16 @@ def extract_and_calculate_classifiction_metrics(sim_params):
     # Allocate one last array, and set some values depending on what classification we are
     # doing
     if timeseries_flag in ("LAI_MEAN1","LAI_MEAN_BIMODAL"):
-        classification_array=np.zeros((npoints,4))
+        classification_array=np.zeros((npoints,7))
 
         # How many different criteria?
-        # 0 : Fraction of annual LAI_MEAN values above a threshold
+        # 0 : Fraction of annual LAI_MEAN values above an ideal threshold
         # 1 : Fraction of annual LAI_MEAN values below a different threshold
         # 2 : Fraction of annual LAI_MEAN values are NaNs
         # 3 : Fraction of timesteps when LAI_MEAN changes by more than 0.2
+        # 4 : Fraction of annual LAI_MEAN values are zero
+        # 5 : Fraction of annual LAI_MEAN values are close to zero
+        # 6 : Fraction of annual LAI_MEAN values above a good threshold
 
     elif timeseries_flag == "LAI_MEAN2":
         classification_array=np.zeros((npoints,4))
@@ -940,6 +1137,13 @@ def extract_and_calculate_classifiction_metrics(sim_params):
         # 0 : Fraction of points above a certain threshold (this is bad)
         # 1 : Fraction of points below a certain threshold (this is good)
 
+    elif sim_params.timeseries_flag == "N_RESERVES":
+
+        classification_array=np.zeros((npoints,3))
+
+        # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
+        # 1 : Not implemented for the moment
+        # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
     else:
 
         print("I don't know how to create criteria for this flag in extract_and_calculate_classifiction_metrics!")
@@ -993,7 +1197,7 @@ def keep_grid_point(srcnc,pft_selected,ilat,ilon,veget_max_threshold,timeseries_
     # Check to see if, based on the timeseries we are looking for and the PFT, we want
     # to keep this gridpoint.
 
-    if timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL"):
+    if timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL","N_RESERVES"):
         if not np.ma.is_masked(srcnc[veget_max_name][0, pft_selected, ilat, ilon]):
             if srcnc[veget_max_name][0, pft_selected, ilat, ilon] < veget_max_threshold:
                 lkeep=False
@@ -1027,9 +1231,9 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
         timeseries=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
 
         # How many different criteria?
-        carray=np.zeros((4))
+        carray=np.zeros((7))
 
-        # 0 : Fraction of LAI_MEAN values above a threshold
+        # 0 : Fraction of LAI_MEAN values above an ideal threshold
         temp_array=np.where(timeseries > sim_params.lai_good_threshold, True, False)
         carray[0]=float(np.sum(temp_array))/float(len(temp_array))
 
@@ -1053,6 +1257,18 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
         if len(temp_array) != 0:
             carray[3]=float(np.sum(temp_array))/float(len(temp_array))
         #endif
+
+        # 4 : Fraction of annual LAI_MEAN values are zero
+        temp_array=np.where(timeseries==0.0, True, False)
+        carray[4]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 5 : Fraction of annual LAI_MEAN values are close to zero
+        temp_array=np.where(timeseries < sim_params.zero_threshold, True, False)
+        carray[5]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 6 : Fraction of LAI_MEAN values above a good threshold
+        temp_array=np.where(timeseries > sim_params.lai_good_threshold*sim_params.good_growth, True, False)
+        carray[6]=float(np.sum(temp_array))/float(len(temp_array))
 
     elif sim_params.timeseries_flag == "LAI_MEAN2":
 
@@ -1085,6 +1301,57 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
         # 1 : Fraction of points below a certain threshold (this is good)
         temp_array=np.where(abs(timeseries) < abs(sim_params.twbr_low_threshold), True, False)
         carray[1]=np.sum(temp_array)
+
+    elif sim_params.timeseries_flag == "N_RESERVES":
+
+        def compute_decennial_means(short_timeseries):
+            
+            if len(short_timeseries) % 10 != 0:
+                print("Wrong size timeseries!")
+                print(len(short_timeseries))
+                print(short_timeseries)
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            #endif
+
+            dec_means=np.zeros((len(short_timeseries)/10))
+            dec_variances=np.zeros((len(short_timeseries)/10))
+            for idec in range(0,len(short_timeseries),10):
+                sts=short_timeseries[idec:idec+10]
+                print(short_timeseries[idec:idec+10])
+                dec_means.append(statistics.mean(short_timeseries[idec:idec+10]))
+                dec_variances.append(statistics.variance(short_timeseries[idec:idec+10]))
+            #endif
+            print("iuroez ",short_timeseries)
+            print(dec_means)
+            return dec_means,dec_variances
+        #endif
+
+        timeseries=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+
+        # How many different criteria?
+        carray=np.zeros((3))
+
+        # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
+        nslice_years=sim_params.nreserves_ndecades*10
+        lfound=False
+        # Guessing this will be expensive, so just try doing it every decade first
+        for istep in range(0,len(timeseries),10):
+            if istep+nslice_years > len(timeseries) or lfound:
+                continue
+            #endif
+            dec_means,dec_variances=compute_decennial_means(timeseries[istep:nslice_years])
+        #endfor
+        if lfound:
+            carray[0]=1.0
+        else:
+            carray[0]=0.0
+        #endif
+
+        # 1 : Not implemented for the moment
+
+        # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
+
 
     else:
 

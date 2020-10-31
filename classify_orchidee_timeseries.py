@@ -22,8 +22,7 @@ import re
 # Import from local routines
 from grid import Grid
 from extraction_subroutines import extract_variables_from_file,extract_timeseries,read_in_extracted_timeseries
-from classification_subroutines import create_classification_criteria,classify_observations,plot_classified_observations,map_classified_pixels,extract_and_calculate_classifiction_metrics,simulation_parameters
-from netcdf_subroutines import find_variable
+from classification_subroutines import classify_observations,plot_classified_observations,map_classified_pixels,extract_and_calculate_classifiction_metrics,simulation_parameters
 ###############################################
 
 
@@ -67,6 +66,17 @@ parser.add_argument('--extract_only', dest='extract_only', action='store',
                    default="False", 
                    help='if True/Yes/y/Y, then stop the code after the variables have been extracted (do not classify them or make a map)')
 
+##
+parser.add_argument('--print_all_timeseries', dest='print_all_ts', action='store',
+                   default="False",
+                   help='If True/Yes/y/Y, create a .csv file with each class of timeseries using the rows as the dates and the columns as sat/lon strings.  This is primarily useful for re-analsis.')
+parser.add_argument('--print_ts_region', dest='print_ts_region', action='store',
+                   default="35N,75N,-20E,40E",
+                    help='Limit printing of all timeseries to the specified region (specifying a rectangle using a format "35N,75N,-20E,40E", using negative numbers for west and south).  Requires print_all_timeseries to also be True/Yes/y/Y.')
+
+parser.add_argument('--supp_title_string', dest='supp_title_string', action='store',
+                   default="_",
+                    help='Something to add to the simulation name to make distinct files.  Default is nothing.')
 
 args = parser.parse_args()
 
@@ -87,6 +97,9 @@ elif timeseries_flag == "LAI_MEAN_BIMODAL":
     print("Extracting the LAI_MEAN timeseries for every pixel, and classifying only using LAI_MEAN.  Flagging bimodal distributions (use the --classification flag to change)")
 elif timeseries_flag == "TWBR":
     print("Extracting the TWBR timeseries for every pixel, and classifying only using it.  Checking for poor water conservation (use the --classification flag to change)")
+
+elif timeseries_flag == "N_RESERVES":
+    print("Extracting the timeseries for the nitrogen reserve and labile pools, and classyfing the timeseries only on them.  Checking for accumulating N reserves on decennial timescales, as that has been a sign of problems before (use the --classification flag to change)")
 
 else:
     print("Do not understand what classification you want me to do. (unknown --classification flag value {}".format(timeseries_flag))
@@ -195,11 +208,27 @@ else:
 year_increment=args.year_increment
 print("{} years between our history files (use the --year_increment flag to change)".format(year_increment))
 
+print_all_ts=args.print_all_ts
+print_ts_region=args.print_ts_region
+if print_all_ts.lower() in possible_true_values:
+    print_all_ts=True
+else:
+    print_all_ts=False
+#endif
+if print_all_ts:
+    print("Printing all timeseries to a .csv file (as a debugging option). (use the --print_all_timeseries flag to change)")
+    print("Printing timeseries for region: ",print_ts_region)
+else:
+    print("Not printing all timeseries to a .csv file. (use the --print_all_timeseries to change)")
+#endif
+
+supp_title_string=args.supp_title_string
+
 
 print("######################## END INPUT VALUES ######################")
 
 # To make things easier, pass around a stucture with simulation parameters.
-sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis)
+sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string)
 
 ###############################################
 
@@ -228,14 +257,12 @@ if extract_only:
     sys.exit(0)
 #endif
 
-# From here, I want to check some of the variable names.
-srcnc = NetCDFFile(sim_parms.condensed_nc_file_name,"r")
-veget_max_name=find_variable(["VEGET_MAX","VEGET_COV_MAX"],srcnc,False,"",lcheck_units=False)
-lai_mean_name=find_variable(["LAI","LAI_MEAN"],srcnc,False,"",lcheck_units=False)
-lai_max_name=find_variable(["LAI","LAI_MAX"],srcnc,False,"",lcheck_units=False)
-sim_parms.set_variable_names(veget_max_name,lai_mean_name,lai_max_name)
-srcnc.close()
 
+##########################################################
+
+##########################################################
+# Set up some information for the classification procedure
+sim_parms.set_classification_filename_information()
 ##########################################################
 
 ###############################################################
@@ -286,7 +313,7 @@ classification_vector=classify_observations(classification_array,sim_parms)
 
 ##########################################################
 # Generate a few random plots of each classification.
-level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_parms,syear_plot,eyear_plot)
+level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_parms,syear_plot,eyear_plot,classification_array)
 ##########################################################
 
 ##########################################################

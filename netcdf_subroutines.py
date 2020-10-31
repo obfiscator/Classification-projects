@@ -24,10 +24,30 @@ def find_time_coordinate_name(srcnc):
     return timecoord
 #enddef
 
+# Find the name of the longitude axis.
+def find_longitude_coordinate_name(srcnc,lcheck_units=False):
+
+    global __longitude_names__
+
+    loncoord=find_variable(__longitude_names__,srcnc,True,"degrees_east",lcheck_units)
+
+    return loncoord
+#enddef
+
+# Find the name of the latitude axis.
+def find_latitude_coordinate_name(srcnc,lcheck_units=False):
+
+    global __latitude_names__
+
+    latcoord=find_variable(__latitude_names__,srcnc,True,"degrees_north",lcheck_units)
+
+    return latcoord
+#enddef
+
 # Find the name of some standard coordinates that we expect, confirming
 # units.
 # Return the name of the coordinate
-def find_orchidee_coordinate_names(srcnc):
+def find_orchidee_coordinate_names(srcnc,check_units=True):
 
     # for each file time, we need to check different things.
     global __latitude_names__
@@ -35,7 +55,9 @@ def find_orchidee_coordinate_names(srcnc):
     global __time_names__
     global __veget_names__
 
-    timecoord=find_variable(__time_names__,srcnc,True,"seconds since 1901-01-01 00:00:00")
+    print("jiofez ",check_units)
+
+    timecoord=find_variable(__time_names__,srcnc,True,"seconds since 1901-01-01 00:00:00",lcheck_units=check_units)
     loncoord=find_variable(__longitude_names__,srcnc,True,"degrees_east")
     latcoord=find_variable(__latitude_names__,srcnc,True,"degrees_north")
     vegetcoord=find_variable(__veget_names__,srcnc,True,"1")
@@ -54,6 +76,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
         print(is_dim)
         print(desired_units)
         print("in file: ",srcnc.filepath())
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
@@ -84,6 +107,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
                     print("I found a variable named this, but not a dimension!")
                     print("Not sure how this is possible, so stopping.")
                     print("Variable I found: {}, dimension I found: {}".format(varname,actual_name))
+                    traceback.print_stack(file=sys.stdout)
                     sys.exit(1)
                 #endif
             #endif
@@ -98,6 +122,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
         print("I could not find it.")
         print("in file: ",srcnc.filepath())
         print(srcnc.variables)
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
         
     #endif
@@ -106,6 +131,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
         print("Do we not have one of these variables in this file? ",varnames)
         print("in file: ",srcnc.filepath())
         print(srcnc.variables)
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
@@ -113,6 +139,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
         print("Do we not have one of these dimensions in this file?",varnames)
         print("in file: ",srcnc.filepath())
         print(srcnc.dimensions)
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
@@ -134,6 +161,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
                 print("Actual units: ",unitstring)
                 print("in file: ",srcnc.filepath())
                 if lcheck_units:
+                    traceback.print_stack(file=sys.stdout)
                     sys.exit(1)
                 #endif
             #endif
@@ -143,6 +171,7 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
             print("in file: ",srcnc.filepath())
             if lcheck_units:
                 print(srcnc[actual_name])
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
         #endif
@@ -378,33 +407,19 @@ def create_time_axis_from_netcdf(filename):
 #enddef
 
 ###########################
-# Given a set of variables, annual data, and metadata, create
-# a NetCDF file that conforms to VERIFY standards
+# Given a set of variables, monthly data, and metadata, create
+# a NetCDF file that conforms to VERIFY standards for country
+# total timeseries
 def create_countrytot_file(sim_params):
-    print("Creating the file {}".format(sim_params.country_tot_output_filename))
+
+    output_file_name=sim_params.output_filename_base.substitute(filetype="CountryTotWithOutEEZ")
+    print("Creating the file {}".format(output_file_name))
 
     # I need to create a time axis.  I assume the incoming data is annual,
     # since it comes from a spreadsheet.  It needs to be monthly.
 
-    # Check to see the lowest and highest data years of all our variables
-    syear=sim_params.variables_in_file[0].syear
-    eyear=sim_params.variables_in_file[0].eyear
-    for ivar in range(len(sim_params.variables_in_file)):
-        if sim_params.variables_in_file[ivar].syear < syear:
-            syear=sim_params.variables_in_file[ivar].syear
-        #endif
-        if sim_params.variables_in_file[ivar].eyear > eyear:
-            eyear=sim_params.variables_in_file[ivar].eyear
-        #endif
-    #endfor
-
-    output_monthly_axis_values=create_monthly_axis(syear,eyear,1900,1,1,"","","","days")
-    output_timeaxis=time_axis(output_monthly_axis_values,"days since 1900-01-01")
-    nmonths=len(output_monthly_axis_values)
-
-
     # Open up the output file
-    dstCT = NetCDFFile(sim_params.country_tot_output_filename,"w")
+    dstCT = NetCDFFile(output_file_name,"w")
 
     # I have four axes: country, time, strlength, and nb2 (for time_bounds)
     time_coord=sim_params.time_refcoord_name
@@ -420,24 +435,15 @@ def create_countrytot_file(sim_params):
     dstCT.createDimension(strlength_coord, str_length)
     dstCT.createDimension(nb2_coord, sim_params.nb2_value)
 
-    # Quick check
-    if sim_params.time_units != output_timeaxis.timebounds_units:
-        print("Our units are not consistent!")
-        print(sim_params.time_units)
-        print(output_timeaxis.timebounds_units)
-        traceback.print_stack(file=sys.stdout)
-        sys.exit(1)
-    #endif
-
     # Now create the time and time_bounds variables and write them
     # to the file
     x = dstCT.createVariable(time_coord, sim_params.timecoord_type, (time_coord))
     dstCT[time_coord].setncatts(sim_params.timecoord_atts)
-    dstCT[time_coord][:]=output_monthly_axis_values
+    dstCT[time_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.values
 
     x = dstCT.createVariable(sim_params.timebounds_refcoord_name, sim_params.timebounds_type, sim_params.timebounds_dimensions)
     dstCT[time_bounds_coord].setncatts(sim_params.timebounds_atts)
-    dstCT[time_bounds_coord][:]=output_timeaxis.timebounds_values
+    dstCT[time_bounds_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.timebounds_values
 
     # I need to output the country codes and the country names as two
     # different variables
@@ -462,34 +468,93 @@ def create_countrytot_file(sim_params):
         #endfor
     #endfor
 
-    # Now we write the actual variables.  This is made more tricky because
-    # we have annual values, but we write to a monthly axis.
+    # Now we write the actual variables.  
     for ivar in range(len(sim_params.variables_in_file)):
 
         varname_class=sim_params.variables_in_file[ivar]
 
         
-        # Allocate an array to hold all our data
-        temp_array=np.zeros((nmonths,ncountries))*np.nan
-        iyear=-1
-        for imonth in range(nmonths):
-            if imonth % 12 == 0:
-                iyear=iyear+1
-            #endif
-            temp_array[imonth,:]=sim_params.variables_in_file[ivar].data[iyear,:]
-            #print(imonth,iyear)
-
-        #endfor
-
-        # Now print the variable values and all the meta information
         dstCT.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,country_coord))
         dstCT[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
-        dstCT[varname_class.output_varname][:,:]=temp_array[:,:]
-        print("jifoez ",ivar,sim_params.variables_in_file[ivar].output_varname,temp_array[0,3],sim_params.variables_in_file[ivar].data[0,3])
+        dstCT[varname_class.output_varname][:,:]=varname_class.monthly_data[:,:]
     #endfor
 
     # Now print some additional meta information
+    for iinfo,cinfo in enumerate(sim_params.countrytot_info):
+        attname="info{}".format(iinfo+1)
+        dstCT.setncatts({attname: cinfo})
+    #endfor
+
+    # And print information about missing data for regions
+    sim_params.print_missing_region_information(dstCT)
 
     dstCT.close()
+
+#enddef
+
+###########################
+# Given a set of variables, monthly data, and metadata, create
+# a NetCDF file that conforms to VERIFY standards for spatially
+# explicit timeseries
+def create_2D_file(sim_params):
+    
+    output_file_name=sim_params.output_filename_base.substitute(filetype="2D")
+    print("Creating the file {}".format(output_file_name))
+
+    # Open up the output file
+    dst2D = NetCDFFile(output_file_name,"w")
+
+    # I have four axes: time, latitude, longitude, and nb2 (for time_bounds)
+    time_coord=sim_params.time_refcoord_name
+    time_bounds_coord=sim_params.timebounds_refcoord_name
+    lat_coord=sim_params.lat_refcoord_name
+    lon_coord=sim_params.lon_refcoord_name
+    nb2_coord=sim_params.nb2_refcoord_name
+
+    dst2D.createDimension(time_coord, None)
+    dst2D.createDimension(lat_coord, sim_params.variables_in_file[0].nlats)
+    dst2D.createDimension(lon_coord, sim_params.variables_in_file[0].nlons)
+    dst2D.createDimension(nb2_coord, sim_params.nb2_value)
+
+    # Now create the time and time_bounds variables and write them
+    # to the file
+    x = dst2D.createVariable(time_coord, sim_params.timecoord_type, (time_coord))
+    dst2D[time_coord].setncatts(sim_params.timecoord_atts)
+    dst2D[time_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.values
+
+    x = dst2D.createVariable(sim_params.timebounds_refcoord_name, sim_params.timebounds_type, sim_params.timebounds_dimensions)
+    dst2D[time_bounds_coord].setncatts(sim_params.timebounds_atts)
+    dst2D[time_bounds_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.timebounds_values
+
+    # Latitude and longitude values are also pretty easy, with some metadata.
+    dst2D.createVariable(lat_coord, "f4", (lat_coord))
+    dst2D.createVariable(lon_coord, "f4", (lon_coord))
+    dst2D.variables[lat_coord][:]=sim_params.variables_in_file[0].lat
+    dst2D.variables[lon_coord][:]=sim_params.variables_in_file[0].lon
+
+    # add some metadata
+    
+
+    # Now we write the actual variables.  
+    for ivar in range(len(sim_params.variables_in_file)):
+
+        varname_class=sim_params.variables_in_file[ivar]
+
+        
+        dst2D.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,lat_coord,lon_coord))
+        dst2D[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
+        dst2D[varname_class.output_varname][:,:,:]=varname_class.monthly_2D_data[:,:,:]
+    #endfor
+
+    # Now print some additional meta information
+    for iinfo,cinfo in enumerate(sim_params.spatial_info):
+        attname="info{}".format(iinfo+1)
+        dst2D.setncatts({attname: cinfo})
+    #endfor
+
+    # And print information about missing data for regions
+    sim_params.print_missing_region_information(dst2D)
+
+    dst2D.close()
 
 #enddef

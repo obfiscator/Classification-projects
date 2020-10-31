@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import re
 from time_axis_manipulations import time_axis,create_annual_axis
-import sys
+import sys,traceback
 
 # This is a class to hold variable information that
 # we are extracting from many input file
@@ -28,13 +28,15 @@ class extracted_variable_class:
     # array
     def create_data_array(self,timeaxis,timeunits):
 
+        #### I would like to be able to treat arrays without time coordinates
+        ####
         # Do we have a timecoord?  If not, we cannot do this!
-        if self.timecoord not in self.dimensions:
-            print("Do not have a timecoord for this variable!")
-            print("Variable: ",self.name)
-            print("Dimensions: ",self.dimensions)
-            print("Therefore, I cannot extend the timecoord.")
-            sys.exit(1)
+        #if self.timecoord not in self.dimensions:
+        #    print("Do not have a timecoord for this variable!")
+        #    print("Variable: ",self.name)
+        #    print("Dimensions: ",self.dimensions)
+        #    print("Therefore, I cannot extend the timecoord.")
+        #    sys.exit(1)
         #endif
 
         ntimepoints=len(timeaxis)
@@ -50,6 +52,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet create an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
         elif len(self.dimensions) == 3:
@@ -60,6 +63,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet create an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
@@ -68,15 +72,21 @@ class extracted_variable_class:
 
                 self.data_values=np.zeros((ntimepoints, 2),dtype=self.datatype)
 
+            elif self.dimensions == (self.latcoord, self.loncoord):
+
+                self.data_values=np.zeros((self.nlats, self.nlons),dtype=self.datatype)
+
             else:
                 print("I cannot yet create an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
         else:
             print("I cannot yet create an array with this dimension string.")
             print(self.dimensions)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -100,6 +110,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet fill an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
         elif len(self.dimensions) == 3:
@@ -112,6 +123,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet fill an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
@@ -120,15 +132,20 @@ class extracted_variable_class:
 
                 self.data_values[itimepoint,:]=np.ma.filled(incoming_data_array[jtimepoint,:],fill_value=np.nan)
 
+            elif self.dimensions == (self.latcoord, self.loncoord):
+                self.data_values[:,:]=np.ma.filled(incoming_data_array[:,:],fill_value=np.nan)
+
             else:
                 print("I cannot yet create an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
         else:
             print("I cannot yet fill an array with this dimension string.")
             print(self.dimensions)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -140,6 +157,7 @@ class extracted_variable_class:
             print("I cannot yet change units while regridding in regrid_time_axis.")
             print("Old time units: ",self.timeunits)
             print("New time units: ",new_time_axis_units)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -151,6 +169,7 @@ class extracted_variable_class:
             print("Can only do monthly to annual time axis regridding right now.")
             print("Old number of points: ",old_timeaxis.ntimepoints)
             print("New number of points: ",regridded_timeaxis.ntimepoints)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -158,6 +177,7 @@ class extracted_variable_class:
             self.time_aggregation_operation="ave"
         else:
             print("What kind of operation do you want to do for variable {} when regridding time axis?".format(self.name))
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -176,6 +196,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet fill an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
         elif len(self.dimensions) == 3:
@@ -209,6 +230,7 @@ class extracted_variable_class:
             else:
                 print("I cannot yet fill an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
@@ -227,12 +249,14 @@ class extracted_variable_class:
             else:
                 print("I cannot yet create an array with this dimension string.")
                 print(self.dimensions)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
         else:
             print("I cannot yet fill an array with this dimension string.")
             print(self.dimensions)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -281,6 +305,7 @@ def extract_variables_from_file(sim_parms):
             print("I then replace stomate by sechiba in the case where you indicate the variable is found in sechiba.")
             print("This follows standard ORCHIDEE output.  I did not find that file format here, so I am stopping.")
             print(stomate_file_name)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
         
@@ -320,11 +345,14 @@ def extract_variables_from_file(sim_parms):
         except:
             print("Does this file not exist?")
             print("Year increment: ",year_increment,iyear,eyear,syear)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endtry
 
-        # Find the names of some coordinates
-        timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc)
+        # Find the names of some coordinates.  If we are fixing the time axis,
+        # we don't care what the time units are here
+        print("jiofje ",sim_parms.fix_time_axis)
+        timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc,check_units=False)
 
         try:
             time_units=srcnc[timecoord].units
@@ -361,6 +389,7 @@ def extract_variables_from_file(sim_parms):
                             print("   a file for this year!")
                             print("Variables requested: ",variables_to_extract)
                             print("Variable location: ",sim_parms.variables_in_which_file)
+                            traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         else:
                             print("No sechiba file and no sechiba variables requested.  Skipping.")
@@ -371,6 +400,7 @@ def extract_variables_from_file(sim_parms):
                             print("   a file for this year!")
                             print("Variables requested: ",variables_to_extract)
                             print("Variable location: ",sim_parms.variables_in_which_file)
+                            traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         else:
                             print("No stomate file and no stomate variables requested.  Skipping.")
@@ -427,6 +457,7 @@ def extract_variables_from_file(sim_parms):
                             srcnc = NetCDFFile(varlocation[varname2],"r")
                         except:
                             print("Does {} not exist?".format(varlocation[name]))
+                            traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         #endtry
 
@@ -445,6 +476,7 @@ def extract_variables_from_file(sim_parms):
                         print("Possible names: ",name)
                         print("Found matches: ",found_varname)
                         print("Location: ",varlocation[name[0]])
+                        traceback.print_stack(file=sys.stdout)
                         sys.exit(1)
                     #endif
 
@@ -536,9 +568,10 @@ def extract_variables_from_file(sim_parms):
 #        elif len(timeaxis_values) == sim_parms.ntotal_data_years*12:
 #            sys.exit(1)
         else:
-            print("Axis doesn't seem to be annual or monthly here. Not sure what to do.")
+            print("Axis doesn't seem to be annual here. Not sure what to do.")
             print("Starting year, ending year, total years: ",sim_parms.syear,sim_parms.eyear,sim_parms.ntotal_data_years)
             print("Length of aggregated time axis: ",len(timeaxis_values))
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -556,6 +589,7 @@ def extract_variables_from_file(sim_parms):
     if combined_timeaxis.syear != syear or combined_timeaxis.eyear != eyear:
         print("Based on the command line, I expect data from year {} to {}.".format(syear,eyear))
         print("However, after looking through the data files, I found data from year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
@@ -586,6 +620,7 @@ def extract_variables_from_file(sim_parms):
             print("I then replace stomate by sechiba in the case where you indicate the variable is found in sechiba.")
             print("This follows standard ORCHIDEE output.  I did not find that file format here, so I am stopping.")
             print(stomate_file_name)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
         
@@ -655,6 +690,7 @@ def extract_variables_from_file(sim_parms):
         else:
             print("Requested to convert a monthly time axis into an annual time axis for extracted data, but data is not monthly!")
             print(combined_timeaxis.timestep)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -774,9 +810,29 @@ def extract_timeseries(input_file_name,timeseries_variable,pft_selected,veget_ma
                     # TESTING
                     icounter=icounter+1
                 #endif
+
+            elif timeseries_variable == "N_RESERVES":
+                if not np.ma.is_masked(srcnc[veget_max_name][0, pft_selected, ilat, ilon]):
+                    if srcnc[veget_max_name][0, pft_selected, ilat, ilon] < veget_max_threshold:
+                        continue
+                    #endif
+
+                    #print("Found a point!",srcnc[veget_max_name][0, pft_selected, ilat, ilon])
+                    # My new array is not masked.  So convert the masked
+                    # values to NaN.
+                    # This is a case where we have two pools
+                    temp_series=srcnc[timeseries_variable][:, pft_selected, ilat, ilon].filled(np.nan)+srcnc["LABILE_M_n"][:, pft_selected, ilat, ilon].filled(np.nan)
+                    timeseries_list.append(srcnc[timeseries_variable][:, pft_selected, ilat, ilon].filled(np.nan))
+                    lat_list.append(vlat)
+                    lon_list.append(vlon)
+
+                    # TESTING
+                    icounter=icounter+1
+                #endif
             else:
                 print('Not sure how you want to extract the timeseries in extract_timeseries!')
                 print(timeseries_variable)
+                traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
@@ -791,6 +847,7 @@ def extract_timeseries(input_file_name,timeseries_variable,pft_selected,veget_ma
     print("Found {} timeseries!".format(npoints))
     if npoints == 0:
         print("Stopping.  Nothing to analyze.")
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
