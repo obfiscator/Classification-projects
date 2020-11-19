@@ -5,7 +5,7 @@ from netcdf_subroutines import find_orchidee_coordinate_names
 import numpy as np
 import pandas as pd
 import re
-from time_axis_manipulations import time_axis,create_annual_axis
+from time_axis_manipulations import time_axis,create_annual_axis,create_monthly_axis
 import sys,traceback
 
 # This is a class to hold variable information that
@@ -22,6 +22,7 @@ class extracted_variable_class:
         self.nlats=nlats
         self.nlons=nlons
         self.nvegets=nvegets
+
     #enddef
 
     # Based on the number of timepoints desired, create an empty 
@@ -173,8 +174,10 @@ class extracted_variable_class:
             sys.exit(1)
         #endif
 
-        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft","labile_m_n","reserve_m_n"]:
+        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft","labile_m_n","reserve_m_n","npp","gpp","nbp_pool","leaf_age_crit","leaf_age","leaf_turn_c","lai_mean_gs","fruit_m_c","wstress_season","leaf_m_max_c",'leaf_turn_ageing_c']:
             self.time_aggregation_operation="ave"
+        elif self.name.lower() in ["areas","contfrac"]:
+            self.time_aggregation_operation="none" # no time axis
         else:
             print("What kind of operation do you want to do for variable {} when regridding time axis?".format(self.name))
             traceback.print_stack(file=sys.stdout)
@@ -186,7 +189,7 @@ class extracted_variable_class:
         if len(self.dimensions) == 4:
             if self.dimensions == (self.timecoord, self.vegetcoord, self.latcoord, self.loncoord):
 
-                # A nice way to take the average across gruops of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
                 self.regridded_data_values=np.reshape(self.data_values[:,:,:,:], (-1, 12, self.data_values.shape[1],self.data_values.shape[2],self.data_values.shape[3]))
                 if self.time_aggregation_operation=="ave":
@@ -202,7 +205,7 @@ class extracted_variable_class:
         elif len(self.dimensions) == 3:
             if self.dimensions == (self.timecoord, self.latcoord, self.loncoord):
 
-                # A nice way to take the average across gruops of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
                 self.regridded_data_values=np.reshape(self.data_values[:,:,:], (-1, 12, self.data_values.shape[1],self.data_values.shape[2]))
                 if self.time_aggregation_operation=="ave":
@@ -237,14 +240,16 @@ class extracted_variable_class:
         elif len(self.dimensions) == 2:
             if self.dimensions == ('time_counter', 'axis_nbounds'):
 
-                # A nice way to take the average across gruops of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
                 self.regridded_data_values=np.reshape(self.data_values[:,:], (-1, 12, self.data_values.shape[1]))
                 if self.time_aggregation_operation=="ave":
                     self.regridded_data_values=np.mean(self.regridded_data_values,axis=1)
                 #endif
 
-
+            elif self.dimensions == (self.latcoord, self.loncoord):
+                # No time dimension...nothing to be done
+                self.regridded_data_values=self.data_values[:,:]
 
             else:
                 print("I cannot yet create an array with this dimension string.")
@@ -351,7 +356,6 @@ def extract_variables_from_file(sim_parms):
 
         # Find the names of some coordinates.  If we are fixing the time axis,
         # we don't care what the time units are here
-        print("jiofje ",sim_parms.fix_time_axis)
         timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc,check_units=False)
 
         try:
@@ -558,25 +562,29 @@ def extract_variables_from_file(sim_parms):
         # Look at the starting date, the end date, the number of steps,
         # and the origin date and create a time axis.
         
-        # This timeseries may have messed up values, but by created it,
+        # This timeseries may have messed up values, but by creating it,
         # we can parse the time units string and figure out how to make
         # a new one.  Most values will not be trustworthy.
         combined_timeaxis=time_axis(timeaxis_values,time_units,lstop=False)
 
         if len(timeaxis_values) == sim_parms.ntotal_data_years:
             timeaxis_values=create_annual_axis(sim_parms.syear,sim_parms.eyear,combined_timeaxis.oyear,combined_timeaxis.omonth,combined_timeaxis.oday,combined_timeaxis.ohour,combined_timeaxis.omin,combined_timeaxis.osec,combined_timeaxis.ounits)
-#        elif len(timeaxis_values) == sim_parms.ntotal_data_years*12:
-#            sys.exit(1)
+        elif len(timeaxis_values) == sim_parms.ntotal_data_years*12:
+            timeaxis_values=create_monthly_axis(sim_parms.syear,sim_parms.eyear,sim_parms.desired_oyear,sim_parms.desired_omonth,sim_parms.desired_oday,sim_parms.desired_ohour,sim_parms.desired_omin,sim_parms.desired_osec,sim_parms.desired_ounits)
+
         else:
-            print("Axis doesn't seem to be annual here. Not sure what to do.")
+            print("Axis doesn't seem to be annual or monthly here. Not sure what to do.")
             print("Starting year, ending year, total years: ",sim_parms.syear,sim_parms.eyear,sim_parms.ntotal_data_years)
             print("Length of aggregated time axis: ",len(timeaxis_values))
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
-        # The calendar attribute may be messed up.  Since I've recreated it, reset that.
+        # The calendar attribute and units may be messed up.  
+        # Since I've recreated it, reset them.
         dstnc[timecoord].setncatts({"calendar" : "GREGORIAN"})
+        dstnc[timecoord].setncatts({"units" : sim_parms.desired_timeunits})
+        dstnc[timecoord].setncatts({"time_origin" : sim_parms.desired_timeorigin})
 
         combined_timeaxis=time_axis(timeaxis_values,time_units)
 
@@ -589,8 +597,12 @@ def extract_variables_from_file(sim_parms):
     if combined_timeaxis.syear != syear or combined_timeaxis.eyear != eyear:
         print("Based on the command line, I expect data from year {} to {}.".format(syear,eyear))
         print("However, after looking through the data files, I found data from year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
-        traceback.print_stack(file=sys.stdout)
-        sys.exit(1)
+        if not sim_parms.fix_time_axis:
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        else:
+            print("Continuing, since --fix_time_axis is set to True.")
+        #endif
     #endif
 
     # Now we allocate arrays to hold all of our data.
@@ -639,7 +651,7 @@ def extract_variables_from_file(sim_parms):
         # Open the file and get some information about coordinate names
         print("Extracting time data from: ",stomate_file_name)
         srcnc = NetCDFFile(stomate_file_name,"r")
-        timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc)
+        timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc,check_units=False)
 
         newtimesteprange=np.arange(itimestep,itimestep+len(srcnc[timecoord][:]))
 
@@ -663,7 +675,7 @@ def extract_variables_from_file(sim_parms):
             # Open the file and get some information about coordinate names
             print("Extracting {} data from: ".format(varname),varlocation[varname])
             srcnc = NetCDFFile(varlocation[varname],"r")
-            timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc)
+            timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc,check_units=False)
 
             itimestep2=newtimesteprange[0]
             for jtimestep in range(len(srcnc[timecoord][:])):

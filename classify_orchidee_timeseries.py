@@ -12,6 +12,32 @@
 
 # I try to do all the above in different subroutines
 
+###########################################################################
+# OUTPUT SUMMARY
+# This script products a series of figures, primarily a map with pixels
+# colored green, light green, yellow, orange, and red.  These colors represent
+# a judgement on the quality of the timeseries for that pixel.  Green pixels
+# represent behavior that we judge to be "good" from a scientific standpoint,
+# for example a stable LAI timeseries over the course of a hundred years,
+# reaching a value that represents a PFT in robust health.  Red pixels indicate
+# pixels with problematic behavior, such as an LAI timeseries that falls to 
+# zero in some years before jumping back.  Such a timeseries may be an 
+# indication that phenology is not working (and the tree doesn't sprout leaves
+# in a given years, which is not realistic...a tree will always try to sprout
+# leaves, even if they die), or that a PFT dies and is replanted every couple
+# years (also unusual for trees).  The other colors represent in-between cases.
+#
+# In addition to the map, example plots of the colored timeseries are also
+# created, in order to give the viewer an idea of what the colors represent.
+# On these plots is listed the criteria by which we judge the timeseries.
+# A maximum of ten timeseries is shown, but in the case where more than
+# 20 timeseries are classified by that color, a clustering algorithm is
+# first applied to group the timeseries into ten different clusters.  One
+# timeseries is selected at random from each of these clusters, under the
+# assumption that this produces the most diverse sample for viewing.  The
+# latitude and longitude coordinates of each plotted timeseries are included
+# for reference.
+#
 ###############################################
 # Import from standard libraries
 from netCDF4 import Dataset as NetCDFFile
@@ -77,6 +103,10 @@ parser.add_argument('--print_ts_region', dest='print_ts_region', action='store',
 parser.add_argument('--supp_title_string', dest='supp_title_string', action='store',
                    default="_",
                     help='Something to add to the simulation name to make distinct files.  Default is nothing.')
+
+parser.add_argument('--plot_points_from_file', dest='plot_points_filename', action='store',
+                   default=None,
+                    help='If this is the name of a .csv file with format Index,Latitude,Longitude, these are the points that will be plotted on the timeseries graphs.  If not specified, points are selected at random based on a clustering algorithm.')
 
 args = parser.parse_args()
 
@@ -224,11 +254,17 @@ else:
 
 supp_title_string=args.supp_title_string
 
+plot_points_filename=args.plot_points_filename
+if plot_points_filename:
+    print("Plotting the points specified in the file {}. (use the --plot_points_from_file flag to change)".format(plot_points_filename))
+else:
+    print("Plotting points selected by a clustering algorithm at random. (use the --plot_points_from_file flag to change)")
+#endif
 
 print("######################## END INPUT VALUES ######################")
 
 # To make things easier, pass around a stucture with simulation parameters.
-sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string)
+sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename)
 
 ###############################################
 

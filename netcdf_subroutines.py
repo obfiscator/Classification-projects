@@ -542,7 +542,7 @@ def create_2D_file(sim_params):
 
         
         dst2D.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,lat_coord,lon_coord))
-        dst2D[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
+        dst2D[varname_class.output_varname].setncatts({"units":varname_class.output_units_2D, "long_name":varname_class.long_name_2D})
         dst2D[varname_class.output_varname][:,:,:]=varname_class.monthly_2D_data[:,:,:]
     #endfor
 

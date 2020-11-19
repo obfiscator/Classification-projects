@@ -21,7 +21,7 @@ from netcdf_subroutines import find_orchidee_coordinate_names,find_variable
 ###################################
 
 class simulation_parameters:
-    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string):
+    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename):
         self.pft_selected = pft_selected # Note that this is stored in
         # here with Python indexing!  So PFT6 is stored here as 5.
         self.veget_max_threshold = veget_max_threshold
@@ -34,6 +34,7 @@ class simulation_parameters:
         self.print_all_ts=print_all_ts
         self.print_ts_region=print_ts_region
         self.supp_title_string=supp_title_string
+        self.plot_points_filename=plot_points_filename
 
         # Based on the above, set some other flags.
 
@@ -244,6 +245,22 @@ class simulation_parameters:
         # Figure out a window where we print timeseries
         self.nlat_window,self.slat_window,self.wlon_window,self.elon_window=parse_latlon_string(self.print_ts_region)
 
+        # These are the time axis units we want, in case of regridding
+        self.desired_oyear=1901
+        self.desired_omonth=1
+        self.desired_oday=1
+        self.desired_ohour=0
+        self.desired_omin=0
+        self.desired_osec=0
+        self.desired_ounits="seconds"
+        if self.desired_ohour != "":
+            self.desired_timeorigin="{0:04d}-{1:02d}-{2:02d} {3:02d}:{4:02d}:{5:02d}".format(self.desired_oyear,self.desired_omonth,self.desired_oday,self.desired_ohour,self.desired_omin,self.desired_osec)
+        else:
+            self.desired_timeorigin="{0:04d}-{1:02d}-{2:02d}".format(self.desired_oyear,self.desired_omonth,self.desired_oday)
+        #endif
+        self.desired_timeunits="{} since ".format(self.desired_ounits) + self.desired_timeorigin
+
+
     #enddef
 
     # In order for this to work, the NC file must already exist!
@@ -265,8 +282,10 @@ class simulation_parameters:
         # These names will depend on the analysis we are doing
         if self.timeseries_flag == "LAI_MEAN1":
 
-            # For the name of the file with the map
-            self.classified_map_filename="classified_map_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
+            # For the name of the file with the map.  I will use this
+            # identifier elsewhere, too.
+            self.cmap_identifier="{}PFT{}_LAIMEAN".format(self.output_file_string,self.pft_selected+1)
+
             # And the title of the map itself
             self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe {} timeseries for PFT {}".format(self.sim_name,self.tag_version,self.lai_mean_name,self.pft_selected+1)
 
@@ -393,6 +412,9 @@ class simulation_parameters:
             print(self.timeseries_flag)
             sys.exit(1)
         #endif
+
+        # For the name of the file with the map
+        self.classified_map_filename="classified_map_{}.png".format(self.cmap_identifier)
 
     #enddef
 
@@ -852,6 +874,19 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
 
     #endfor
     
+    # Print out a file with all the points and their classification, just in case
+    all_timeseries=np.zeros((len(timeseries_lat),3))
+    columnnnames=("Latitude","Longitude","Level")
+    for ipoint in range(len(timeseries_lat)):
+        all_timeseries[ipoint,0]=timeseries_lat[ipoint]
+        all_timeseries[ipoint,1]=timeseries_lon[ipoint]
+        all_timeseries[ipoint,2]=classification_vector[ipoint]
+        timeseriesdf=pd.DataFrame(data=all_timeseries,columns=columnnnames)
+        timeseriesdf.to_csv(path_or_buf="all_classified_points_{}.csv".format(sim_params.cmap_identifier),sep=",")
+
+    #endfor
+    ######
+
 
     #####
     # I want to plot a global timeseries by combining all these pixels
