@@ -132,6 +132,9 @@ elif timeseries_flag == "TWBR":
 elif timeseries_flag == "N_RESERVES":
     print("Extracting the timeseries for the nitrogen reserve and labile pools, and classyfing the timeseries only on them.  Checking for accumulating N reserves on decennial timescales, as that has been a sign of problems before (use the --classification flag to change)")
 
+elif timeseries_flag == "TOTAL_M_c":
+    print("Extracting the timeseries for the total carbon biomass, and classyfing the timeseries only on them.  Checking for accumulating biomass over hundreds of years, as pixels should in theory reach maximum biomass in 300 years or so (use the --classification flag to change)")
+
 else:
     print("Do not understand what classification you want me to do. (unknown --classification flag value {}".format(timeseries_flag))
     sys.exit(1)
