@@ -97,7 +97,8 @@ parser.add_argument('--print_all_timeseries', dest='print_all_ts', action='store
                    default="False",
                    help='If True/Yes/y/Y, create a .csv file with each class of timeseries using the rows as the dates and the columns as sat/lon strings.  This is primarily useful for re-analsis.')
 parser.add_argument('--print_ts_region', dest='print_ts_region', action='store',
-                   default="35N,75N,-20E,40E",
+                   #default="35N,75N,-20E,40E",
+                   default="-90N,90N,-180E,180E",
                     help='Limit printing of all timeseries to the specified region (specifying a rectangle using a format "35N,75N,-20E,40E", using negative numbers for west and south).  Requires print_all_timeseries to also be True/Yes/y/Y.')
 
 parser.add_argument('--supp_title_string', dest='supp_title_string', action='store',
@@ -298,6 +299,8 @@ if extract_only:
 
 ##########################################################
 # Set up some information for the classification procedure
+# This routine also checks to make sure we have
+# the variables we need for the classification.
 sim_parms.set_classification_filename_information()
 ##########################################################
 

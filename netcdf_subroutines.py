@@ -55,8 +55,6 @@ def find_orchidee_coordinate_names(srcnc,check_units=True):
     global __time_names__
     global __veget_names__
 
-    print("jiofez ",check_units)
-
     timecoord=find_variable(__time_names__,srcnc,True,"seconds since 1901-01-01 00:00:00",lcheck_units=check_units)
     loncoord=find_variable(__longitude_names__,srcnc,True,"degrees_east")
     latcoord=find_variable(__latitude_names__,srcnc,True,"degrees_north")

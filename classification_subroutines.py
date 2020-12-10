@@ -55,7 +55,7 @@ class simulation_parameters:
         # If a variable is not found, skip it.  Extracting variables takes
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c']
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c"]
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 
@@ -69,9 +69,7 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
-        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB":"stomate","SAP_M_BE":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate"}
-
-
+        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB_c":"stomate","SAP_M_BE_c":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate","RESERVE_M_c":"stomate","LABILE_M_c":"stomate"}
 
         if self.timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL"):
             #self.variables_to_extract=["LAI_MEAN","LAI_MAX","VEGET_MAX","IND","time_counter_bounds"]
@@ -90,6 +88,7 @@ class simulation_parameters:
         else:
             print("I do not recognize this timeseries flag in init sim param!")
             print(self.timeseries_flag)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -137,6 +136,7 @@ class simulation_parameters:
         else:
             print("Not sure what to do with this PFT in sim_params def!")
             print(pft_selected)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -162,6 +162,7 @@ class simulation_parameters:
             self.lai_bad_threshold=0.5
         else:
             print("I don't know how to create criteria for this PFT!")
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -183,6 +184,7 @@ class simulation_parameters:
         else:
             print("I don't know how to create criteria for this PFT for ind_upper_threshold!")
             print(self.pft_selected)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -199,7 +201,8 @@ class simulation_parameters:
 
         # This is for the nitrogen reserve pools
         self.nreserves_ndecades=5
-        self.nreserves_good_fraction=0.8
+        self.nreserves_good_fraction=0.95
+        self.nreserves_okay_fraction=0.8
 
     #enddef
 
@@ -277,8 +280,36 @@ class simulation_parameters:
         #lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
         lai_max_name=find_variable(["LAI","LAI_MAX"],srcnc,False,"",lcheck_units=False)
         self.set_variable_names(veget_max_name,lai_mean_name,lai_max_name)
-        srcnc.close()
 
+
+        # Check that we have all the variables that we need.
+        required_vars=[]
+        if self.timeseries_flag == "LAI_MEAN1":
+            required_vars=[veget_max_name,lai_mean_name]
+        elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
+            required_vars=[veget_max_name,lai_mean_name]
+        elif self.timeseries_flag == "LAI_MEAN2":
+            required_vars=[veget_max_name,lai_mean_name]
+        elif self.timeseries_flag == "TWBR":
+            required_vars=['TWBR']
+        elif self.timeseries_flag == "N_RESERVES":
+            required_vars=[veget_max_name,"RESERVE_M_n","LABILE_M_n","RESERVE_M_c","LABILE_M_c","SAP_M_AB_c","SAP_M_BE_c"]
+        else:
+            print("Do not recognize timeseries flag in set_classification_filename_information!")
+            print(self.timeseries_flag)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+        for varname in required_vars:
+            if varname not in srcnc.variables.keys():
+                print("Cannot find an analysis variable I need in the extracted data file!")
+                print("File location: ",srcnc.filepath())
+                print("Looking for: ",varname)
+                print("Variables in file: ",srcnc.variables.keys())
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            #endif
+        
         # These names will depend on the analysis we are doing
         if self.timeseries_flag == "LAI_MEAN1":
 
@@ -288,6 +319,9 @@ class simulation_parameters:
 
             # And the title of the map itself
             self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe {} timeseries for PFT {}".format(self.sim_name,self.tag_version,self.lai_mean_name,self.pft_selected+1)
+
+            # Units on the y-axis of the plot
+            self.ylabel="{} [{}]".format(lai_mean_name,srcnc[lai_mean_name].units)
 
             # For the name of the file with the histograms of the classifiers
             self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEAN.png".format(self.output_file_string,self.pft_selected+1)
@@ -383,11 +417,17 @@ class simulation_parameters:
             #####
         elif self.timeseries_flag == "N_RESERVES":
 
+            # For the name of the file with the map.  I will use this
+            # identifier elsewhere, too.
+            self.cmap_identifier="{}PFT{}_NRESERVES".format(self.output_file_string,self.pft_selected+1)
+
             # For the name of the file with the map
             self.classified_map_filename="classified_map_{}PFT{}_NRESERVES.png".format(self.output_file_string,self.pft_selected+1)
             # And the title of the map itself
-            self.classified_map_title="Each pixel classified according to the nitrogen reserve pools (labile, reserve) timeseries for PFT {}".format(self.pft_selected+1)
+            self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe nitrogen reserve pools (labile, reserve) timeseries for PFT {}".format(self.sim_name,self.tag_version,self.pft_selected+1)
 
+            # Units on the y-axis of the plot
+            self.ylabel="{}\n[{}]".format("RESERVE_M_n+LABILE_M_n",srcnc[self.timeseries_variable].units)
             # For the name of the file with the histograms of the classifiers
             self.class_histogram_filename="classification_histogram_{}PFT{}_NRESERVES.png".format(self.output_file_string,self.pft_selected+1)
 
@@ -397,12 +437,12 @@ class simulation_parameters:
             # This is a subtitle that identifies what we've done
             # a little better
             self.plot_subtitle=[]
-            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools. A red pixel has a series of at least {} continually increasing decennial mean values outside the variance.".format(self.pft_selected+1,self.nreserves_ndecades))
-            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools. An orange pixel has a series of {} decennial means where the odd values are increasing and outside the variance of previous odd values.  This catches timeseries rising more slowly than the red pixels.".format(self.pft_selected+1,self.nreserves_ndecades))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nA red pixel has a series of at least {} continuous decennial mean values\nwhere each value is greater than the previous decennial mean plus the standard deviation of the previous decade.".format(self.pft_selected+1,self.nreserves_ndecades))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nOrange is not currently used.")
 
             self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nThis is a pixel that doesn't fall in any other category.".format(self.pft_selected+1))
-            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nThis color should not be used.".format(self.pft_selected+1))
-            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\nA green pixel has at least {}% of decenniel mean N_RESERVE+N_LABILE values within the varience of the first decade.".format(self.pft_selected+1, self.nreserves_good_fraction*100.0))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\n   A light green pixel has at least {}% of decenniel mean N_RESERVE+N_LABILE values\n   within the average decennial standard deviation of the timeseries mean.".format(self.pft_selected+1, self.nreserves_okay_fraction*100.0))
+            self.plot_subtitle.append("PFT {}, classification based on the sum of the nitrogen labile and reserve pools.\n   A dark green pixel has at least {}% of decenniel mean N_RESERVE+N_LABILE values\n   within the average decennial standard deviation of the timeseries mean.".format(self.pft_selected+1, self.nreserves_good_fraction*100.0))
 
 
 
@@ -410,11 +450,15 @@ class simulation_parameters:
         else:
             print("Do not recognize timeseries flag in set_classification_filename_information!")
             print(self.timeseries_flag)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
         # For the name of the file with the map
         self.classified_map_filename="classified_map_{}.png".format(self.cmap_identifier)
+
+        # And close the file
+        srcnc.close()
 
     #enddef
 
@@ -442,6 +486,7 @@ class simulation_parameters:
         else:
             print("Do not recognize timeseries flag in set_variable_names!")
             print(self.timeseries_flag)
+            traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
 
@@ -574,18 +619,23 @@ def classify_observations(classification_array,sim_params):
         for isample in range(nsamples):
 
             # For this classification, only use three colors.
-            # "Good": Criterion 2 is above a certain threshold and criterion 0 is 0
-            # "Semi-good": Not used
+            # "Good": Criterion 1 is above a certain threshold and criterion 0 is 0
+            # "Semi-good": Criterion 1 is above a slightly lower threshold and criterion 0 is 0
             # "OK" : Everything else.
             # "Semi-bad": Not used.
             # "Bad": Criterion 0 has a value of 1
             # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
-            # 1 : Not implemented for the moment
-            # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
+            # 1 : Fraction of decennial means that fall within the average standard
+            #     deviation of one decade from the whole timeseries mean
+        
+            # 2 : Not used.
 
-            if classification_array[isample,0] == 0.0 and (classification_array[isample,0] > sim_params.nreserves_good_fraction):
+            if classification_array[isample,0] == 0.0 and (classification_array[isample,1] > sim_params.nreserves_good_fraction):
                 # Good
                 classification_vector[isample]=5
+            elif classification_array[isample,0] == 0.0 and (classification_array[isample,1] > sim_params.nreserves_okay_fraction):
+                # Resonably good
+                classification_vector[isample]=4
             elif classification_array[isample,0] == 1.0:
                 # Bad
                 classification_vector[isample]=1
@@ -598,6 +648,7 @@ def classify_observations(classification_array,sim_params):
     else:
         print("Cannot yet classify points with this flag in classify_observations!")
         print(sim_params.timeseries_flag)
+        traceback.print_stack(file=sys.stdout)
         sys.exit(1)
     #endif
 
@@ -721,6 +772,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                             print("icounter = ",icounter)
                             print("npoints = ",npoints)
                             print("Perhaps increase the limit at this part of the code?")
+                            traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         #endif
                     #end while
@@ -751,6 +803,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
                         if len(cluster_timeseries.shape) != 2:
                             print("Problem with clusters!")
                             print(cluster_timeseries.shape)
+                            traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         #endif
 
@@ -785,6 +838,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
             ilinestyle=0
             
             for ipoint in range(selected_timeseries.shape[0]):
+
                 legend_string=create_latlon_string(selected_lat[ipoint],selected_lon[ipoint])
                 #### This is just for debugging.
                 #filename="{}_Class{}.txt".format(legend_string,ilevel)
@@ -817,7 +871,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
             #ax1.legend(legend_axes,labels,bbox_to_anchor=(0,0,1,1), loc="lower left",mode="expand", borderaxespad=0, ncol=3,fontsize='large') 
             plt.legend(bbox_to_anchor=(0,-0.5,1,1), loc="lower left",mode="expand", borderaxespad=0, ncol=3,fontsize='large')
             plt.xlabel(r"""Time [yr]""", fontsize=20)
-            plt.ylabel(r"""{} [-]""".format(sim_params.timeseries_variable), fontsize=20)
+            plt.ylabel(r"""{}""".format(sim_params.ylabel), fontsize=20)
             
             ax1.set_xlim(syear,eyear)
             #ax2.axis('off')
@@ -1177,8 +1231,9 @@ def extract_and_calculate_classifiction_metrics(sim_params):
         classification_array=np.zeros((npoints,3))
 
         # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
-        # 1 : Not implemented for the moment
-        # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
+        # 1 : Fraction of decennial means that fall within the average standard
+        #     deviation of one decade from the whole timeseries mean
+        # 2 : Not used.
     else:
 
         print("I don't know how to create criteria for this flag in extract_and_calculate_classifiction_metrics!")
@@ -1349,44 +1404,87 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
                 sys.exit(1)
             #endif
 
-            dec_means=np.zeros((len(short_timeseries)/10))
-            dec_variances=np.zeros((len(short_timeseries)/10))
-            for idec in range(0,len(short_timeseries),10):
-                sts=short_timeseries[idec:idec+10]
-                print(short_timeseries[idec:idec+10])
-                dec_means.append(statistics.mean(short_timeseries[idec:idec+10]))
-                dec_variances.append(statistics.variance(short_timeseries[idec:idec+10]))
+            dec_means=np.zeros((math.floor(len(short_timeseries)/10)))
+            dec_variances=np.zeros((math.floor(len(short_timeseries)/10)))
+            for idec in range(0,len(dec_means)):
+                jdec=idec*10
+                sts=short_timeseries[jdec:jdec+10]
+                dec_means[idec]=statistics.mean(sts)
+                # The internal python statistics package gives an odd error
+                # here, which seems to be encountered by others.  So use numpy.
+                dec_variances[idec]=np.std(sts)
             #endif
-            print("iuroez ",short_timeseries)
-            print(dec_means)
             return dec_means,dec_variances
         #endif
 
-        timeseries=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries=srcnc['RESERVE_M_n'][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)+srcnc['LABILE_M_n'][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
 
         # How many different criteria?
         carray=np.zeros((3))
 
         # 0 : Presence of a 50-year stretch with all decennial means increasing and outside previous variance (1 True, 0 False)
+
         nslice_years=sim_params.nreserves_ndecades*10
         lfound=False
         # Guessing this will be expensive, so just try doing it every decade first
         for istep in range(0,len(timeseries),10):
-            if istep+nslice_years > len(timeseries) or lfound:
+            #print("ISTEP ",istep,lfound,istep+nslice_years,timeseries[istep:istep+nslice_years])
+            if (istep+nslice_years > len(timeseries)) or lfound:
                 continue
             #endif
-            dec_means,dec_variances=compute_decennial_means(timeseries[istep:nslice_years])
-        #endfor
+            dec_means,dec_variances=compute_decennial_means(timeseries[istep:istep+nslice_years])
+
+            # Check here for the patterns.
+            lbad=True
+            for idec in range(1,len(dec_means)):
+                if dec_means[idec] <= dec_means[idec-1]+dec_variances[idec-1]:
+                    lbad=False
+             #       print("FOUND ",idec,dec_means[idec],dec_means[idec-1],dec_variances[idec-1])
+                #endif
+            #endif
+
+            if lbad:
+                lfound=True
+            #endif
+            #print("ISTEP END ",lbad,lfound)
+
+       #endfor
+
         if lfound:
             carray[0]=1.0
         else:
             carray[0]=0.0
         #endif
 
-        # 1 : Not implemented for the moment
+        # 1 : Fraction of decennial means that fall within the average standard
+        #     deviation of one decade from the whole timeseries mean
+        
+        # Calculate all the decennial means and standard deviations
+        dec_means,dec_variances=compute_decennial_means(timeseries[:])
+        # Calculate the mean of the whole timeseries
+        ts_mean=np.mean(timeseries[:])
+        # What is the mean standard deviation?
+        sd_mean=np.mean(dec_variances)
+        # What fraction of decennial means are within this value from the
+        # full timeseries mean?
+        temp_array=np.where(abs(dec_means-ts_mean) < sd_mean, True, False)
+        carray[1]=float(np.sum(temp_array))/float(len(temp_array))
 
-        # 2 : Fraction of decennial means for the timeseries which fall inside the variance for the first decade (minimum 50 year timeseries)
+        # 2 : Not used.
 
+        ###
+        # Replace timeseries values for each decade with their means.
+        # This makes plots a little easier to decipher.
+        # Don't want to do this before because this will mess up our
+        # calculation of the variance.
+        dec_means,dec_variances=compute_decennial_means(timeseries[:])
+        for idec in range(0,len(dec_means)):
+            jdec=idec*10
+            timeseries[jdec:jdec+10]=dec_means[idec]
+        ###
+
+        #print("END CLASSIFY")
+        #sys.exit(1)
 
     else:
 
