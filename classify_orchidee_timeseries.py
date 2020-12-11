@@ -76,7 +76,7 @@ parser.add_argument('--plot_years', dest='plot_years', action='store',
                    default="101,150",
                    help='the years of the timeseries to plot in the example timeseries.  101,150 is good for forests since they are mature, but croplands and grasslands may be different.   If you plot more than 50 years with annual data, it can be hard to see behavior.')
 parser.add_argument('--global_operation', dest='global_operation', action='store',
-                   default="sum", choices=['sum','ave'],
+                   default="sum", choices=['weightedpftsum','ave'],
                    help='how to combine the pixels for plotting the global timeseries.  Choices are sum and ave.')
 parser.add_argument('--year_increment', dest='year_increment', action='store',
                    default=1, type=int,
@@ -232,8 +232,12 @@ else:
 #endif
 
 global_operation=args.global_operation
-if global_operation == "sum":
-    print("Summing together all the pixels to create a global timeseries (use the --global_operation flag to change)")
+if global_operation == "simplesum":
+    print("Summing together all the pixels WITHOUT taking into account area to create a global timeseries (use the --global_operation flag to change)")
+elif global_operation == "weightedpftsum":
+    print("Summing together all the pixels taking into account the fraction of a pixel covered by this PFT AND the pixel area to create a global timeseries (use the --global_operation flag to change)")
+elif global_operation == "weightedareasum":
+    print("Summing together all the pixels taking into account only the area of the pixel to create a global timeseries (use the --global_operation flag to change)")
 else:
     print("Not yet ready for this global operation! ",global_operation)
     sys.exit(1)
@@ -343,7 +347,7 @@ sim_parms.set_classification_filename_information()
 # timeseries_lon[i]
 # classification_array[i,time]
 # timeseries variable
-timeseries_array,timeseries_lat,timeseries_lon, classification_array=extract_and_calculate_classifiction_metrics(sim_parms)
+timeseries_array,timeseries_lat,timeseries_lon, classification_array,classified_points=extract_and_calculate_classifiction_metrics(sim_parms)
 
 
 ##########################################################
@@ -355,7 +359,7 @@ classification_vector=classify_observations(classification_array,sim_parms)
 
 ##########################################################
 # Generate a few random plots of each classification.
-level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_parms,syear_plot,eyear_plot,classification_array)
+level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_parms,syear_plot,eyear_plot,classification_array,classified_points)
 ##########################################################
 
 ##########################################################

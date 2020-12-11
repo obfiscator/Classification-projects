@@ -20,6 +20,17 @@ from netcdf_subroutines import find_orchidee_coordinate_names,find_variable
 
 ###################################
 
+class classified_pixel_information:
+    def __init__(self, primary_timeseries, latitude, longitude, area, contfrac, veget_max):
+        self.primary_timeseries = primary_timeseries 
+        self.veget_max = veget_max
+        self.area=area
+        self.contfrac=contfrac
+        self.latitude=latitude
+        self.longitude=longitude
+    #enddef
+#endclass
+
 class simulation_parameters:
     def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename):
         self.pft_selected = pft_selected # Note that this is stored in
@@ -316,6 +327,11 @@ class simulation_parameters:
                 traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
+        #endfor
+
+        # Some information for the a global plot of this variable
+        self.global_plot_scale=1.0
+        self.global_plot_units='-'
         
         # These names will depend on the analysis we are doing
         if self.timeseries_flag == "LAI_MEAN1":
@@ -482,7 +498,9 @@ class simulation_parameters:
             self.plot_subtitle.append("PFT {}, classification based on the total biomass of carbon.\nLight green is not currently used.")
             self.plot_subtitle.append("PFT {}, classification based on the total biomass of carbon.\nDark green is not currently used.")
 
-
+            # Some information for the a global plot of this variable
+            self.global_plot_scale=1e-15 # assuming we are in grams
+            self.global_plot_units='Pg C' # this is a stock, not a flux
 
 
 
@@ -722,7 +740,7 @@ def classify_observations(classification_array,sim_params):
 #enddef
 
 # Choose some of the classified points at random and plot them as timeseries
-def plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_params,syear,eyear,classification_array):
+def plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_params,syear,eyear,classification_array,classified_points):
 
         
 
@@ -1010,29 +1028,43 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
 
     #####
     # I want to plot a global timeseries by combining all these pixels
-    xmin=syear
-    xmax=eyear
     xmin=1
-    xmax=241
+    xmax=eyear-syear+1
     global_timeseries=np.zeros((timeseries_array.shape[1]),dtype=np.float32)
     ntimeseries=timeseries_array.shape[0]
-    for itimeseries in range(ntimeseries):
-        global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]
-    #endfor
+    if sim_params.global_operation == "simplesum":
+        for itimeseries in range(ntimeseries):
+            global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]
+        #endfor
+        axis_title="Global timeseries, where {} classified pixels are summed together".format(ntimeseries)
+    elif sim_params.global_operation == "weightedpftsum":
+        for itimeseries in range(ntimeseries):
+            global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]*classified_points[ipoint].veget_max[:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
+        #endfor
+        axis_title="Global timeseries, where {} classified pixels are summed together".format(ntimeseries)
+    elif sim_params.global_operation == "weightedareasum":
+        for itimeseries in range(ntimeseries):
+            global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
+        #endfor
+        axis_title="Global timeseries, where {} classified pixels are summed together".format(ntimeseries)
+    else:
+        print("Not sure how to deal with this global operation!")
+        print(sim_params.global_operation)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
     fig=plt.figure(2,figsize=(13, 8))
     gs = gridspec.GridSpec(2, 1, height_ratios=[9,1])
     ax1=plt.subplot(gs[0])
-    p1=ax1.plot(xvalues[xmin-1:xmax-1],global_timeseries[xmin-1:xmax-1], linestyle="-", marker="o",color="black",label="Global")
+    p1=ax1.plot(xvalues[xmin-1:xmax-1],global_timeseries[xmin-1:xmax-1]*sim_params.global_plot_scale, linestyle="-", marker="o",color="black",label="Global")
     plt.xlabel(r"""Time [yr]""", fontsize=20)
-    plt.ylabel(r"""{} [-]""".format(sim_params.timeseries_variable), fontsize=20)
+    plt.ylabel(r"""{} [{}]""".format(sim_params.timeseries_variable,sim_params.global_plot_units), fontsize=20)
             
     #ax1.set_xlim(syear,eyear)
     #ax2.axis('off')
     #ax1.set_facecolor(level_colors[colors_by_level[ilevel]])
             
-    if sim_params.global_operation == "sum":
-        ax1.set_title("Global timeseries, where {} classified pixels are summed together".format(ntimeseries),fontsize=16)
-    #endif
+    ax1.set_title(axis_title,fontsize=16)
             
     #ax2=plt.subplot(gs[2])
     #ax2.text(0.1,0.02,sim_params.plot_subtitle[ilevel-1],transform=fig.transFigure,fontsize=12)
@@ -1040,6 +1072,8 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
     fig.savefig(sim_params.classified_timeseries_filename.replace("XXXX","{}".format("_global")),dpi=300)
     plt.close(fig) 
     
+    print("hfioewe")
+    sys.exit(1)
 
     return level_colors,colors_by_level
 #enddef
@@ -1321,6 +1355,7 @@ def extract_and_calculate_classifiction_metrics(sim_params):
 
     # Now we loop through all the points, pick out our timeseries, and then compute
     # the metrics
+    classified_points=[]
     for ilat,ilon,ipoint in zip(lat_list,lon_list,range(npoints)):
   
         if ipoint % 100 == 0:
@@ -1333,7 +1368,8 @@ def extract_and_calculate_classifiction_metrics(sim_params):
         # Now the behavior changes with the flag
         classification_array[ipoint,:],timeseries_array[ipoint,:]=compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon)
          
-
+        # Save information about this pixel in a structure
+        classified_points.append(classified_pixel_information(timeseries_array[ipoint,:],srcnc[latcoord][ilat],srcnc[loncoord][ilon],srcnc["Areas"][ilat,ilon],srcnc["CONTFRAC"][ilat,ilon],srcnc[sim_params.veget_max_name][:,pft_selected,ilat,ilon]))
 
     #endif
 
@@ -1355,7 +1391,7 @@ def extract_and_calculate_classifiction_metrics(sim_params):
     #timeseriesdf["Longitude"]=timeseries_lon[:]
     #timeseriesdf.to_csv(path_or_buf="saved_timeseries.csv",index=False)
 
-    return timeseries_array,timeseries_lat,timeseries_lon, classification_array
+    return timeseries_array,timeseries_lat,timeseries_lon, classification_array,classified_points
 
 #enddef
 
