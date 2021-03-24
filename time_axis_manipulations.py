@@ -27,12 +27,18 @@ class time_axis:
         # of the timesteps.  Check the units to see if they
         # are something we can understand.
         self.check_integrity()
+        
+        # Calculate the year and month of every timestep.  Not sure if this
+        # is an expensive process, but we do use it fairly regularly?
+        # I made it a little faster.  Also need to call it before timebounds,
+        # since timebounds uses these values and it's much slower to recalculate.
+        self.calculate_year_month()
 
         # Calculate the timebounds.
+        print("Starting timebounds")
         self.calculate_timebounds()
-
-        # Calculate the year of every timestep.  Not sure if this
-        # is an expensive process, but we do use it fairly regularly?
+        print("Ending timebounds")
+        
 
     #enddef
 
@@ -157,6 +163,31 @@ class time_axis:
         
     #enddef
 
+    # Given a value, find out the index where the value falls
+    # between the bounds.  If the value falls outside the time 
+    # axis, stop with an error.
+    def get_index(self,value):
+        index=-999
+        for itime in range(len(self.values[:])):
+            if value >= self.timebounds_values[itime,0] and value <= self.timebounds_values[itime,1]:
+                index=itime
+            #endif
+        #endfor
+    
+        if index == -999:
+            print("Problem finding the index of this value in this time array!  Perhaps the units are not what you are expecting?")
+            print(value)
+            for itime in range(len(self.values[:])):
+                print(itime,self.timebounds_values[itime,0],self.values[itime],self.timebounds_values[itime,1])
+            #endfor
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+      
+        return index
+
+    #endif
+
     # Given a year, find out the index.  Only to be used for annual time axis at the moment.
     def get_year_index(self,value):
         
@@ -193,7 +224,7 @@ class time_axis:
                 start_year=date(iyear, 1, 1)-date(self.oyear, self.omonth, self.oday)
                 end_year=date(iyear, 12, 31)-date(self.oyear, self.omonth, self.oday)
                 if value >= start_year.days and value <= end_year.days:
-                    return iyear
+                    return int(iyear)
                 #endif
             #endfor
 
@@ -217,7 +248,7 @@ class time_axis:
                 # I cannot use the seconds attribute of datetime here, since that just gives the
                 # amount of seconds in the day.
                 if value >= start_year.days*seconds_per_day and value <= end_year.days*seconds_per_day:
-                    return iyear
+                    return int(iyear)
                 #endif
             #endfor
 
@@ -229,6 +260,59 @@ class time_axis:
         #endif
 
         print("I did not find a year in self.get_year for ",value)
+        
+        print(self.ounits,self.oyear,self.omonth,self.oday)
+
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+
+    #enddef
+
+    # Figure out what month a particular value is in for this time axis
+    def get_month(self,value):
+
+        # If we have a yearly time axis, just make the month June.
+        if self.timestep == "1Y":
+            return 6
+        #endif
+
+        # We should already have passed through the parse_units routine that figures out the origin.
+        if self.ounits.lower() == "days":
+
+            # Note that, in the case of day units, we don't care about hours, minutes, seconds
+            if value > 0.0:
+                syear=self.oyear
+            else:
+                syear=100
+            #endif
+            for iyear in range(syear,22000):
+                for imonth in range(1,13):
+                    if imonth != 12:
+                        start_date=date(iyear, imonth, 1)-date(self.oyear, self.omonth, self.oday)
+                        end_date=date(iyear, imonth+1, 1)-date(self.oyear, self.omonth, self.oday)
+                    else:
+                        start_date=date(iyear, imonth, 1)-date(self.oyear, self.omonth, self.oday)
+                        end_date=date(iyear+1, 1, 1)-date(self.oyear, self.omonth, self.oday)
+                    #endif
+                    #print(value,start_date.days,end_date.days)
+                    if value >= start_date.days and value <= end_date.days:
+                        return int(imonth)
+                    #endif
+                #endfor
+            #endfor
+
+            print("I did not find a month for ",value)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+
+        else:
+            print("Cannot yet deal with these units in get_month!")
+            print(self.ounits)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        print("I did not find a month in self.get_month for ",value)
         
         print(self.ounits,self.oyear,self.omonth,self.oday)
 
@@ -258,6 +342,7 @@ class time_axis:
     #enddef
 
     # Create a new array that holds the time bounds for this axis
+    # This is fast if the year_values are available.
     def calculate_timebounds(self):
         self.timebounds_values=np.zeros((self.ntimepoints,2))*np.nan
         self.timebounds_units=self.timeunits
@@ -266,7 +351,7 @@ class time_axis:
 
             mm=1
             for itime,rtime in enumerate(self.values):
-                current_year=self.get_year(rtime)
+                current_year=self.year_values[itime]
                 # The bounds are just Jan 1 to Dec 31 of this year
                 timestart=date(current_year, mm, 1)-date(self.oyear, self.omonth, self.oday)
                 if mm == 12:
@@ -483,6 +568,19 @@ class time_axis:
             if data_operation == "ave":
                 regridded_data_array=np.mean(regridded_data_array,axis=1)
             #endif
+
+        elif len(data_array.shape) == 3 and time_dim == 0:
+
+        # A nice way to take the average across groups of 12.  Reshape the array, adding a new
+        # axis, and then take the mean of that axis.
+
+            regridded_data_array=np.reshape(data_array[:,:,:], (-1, 12, data_array.shape[1], data_array.shape[2]))
+            if data_operation == "ave":
+                regridded_data_array=np.mean(regridded_data_array,axis=1)
+            elif data_operation == "sum":
+                regridded_data_array=np.nansum(regridded_data_array,axis=1)
+            #endif
+
         else:
             print("************\nCannot yet deal with this shape of data array in regrid time axis.")
             print("data_array.shape :",data_array.shape)
@@ -621,6 +719,114 @@ class time_axis:
             sys.exit(1)
         #endif
     #enddef
+
+    #### Return the index for this date, stopping if this date is outside
+    # the bounds of this time axis.
+    def find_date_index(self,target_date):
+
+        origindate=date(self.oyear,self.omonth,self.oday)
+        timediff=target_date-origindate
+        
+        if self.ounits != "days":
+            print("Cannot current find a date where the units are not days.")
+            print("Considering using the harmonize_units method of this class.")
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        if timediff.days < self.timebounds_values[0,0] or timediff.days > self.timebounds_values[-1,1]:
+            print("Requested timevalue is not on this axis!")
+            print(self.values[:])
+            print("Date requested: ",target_date)
+            print("timediff: ",timediff.days)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        found_index=-1
+        for itime in range(self.timebounds_values.shape[0]):
+            if self.timebounds_values[itime,0] <= timediff.days and self.timebounds_values[itime,1] > timediff.days:
+                found_index=itime
+            #endif
+        #endfor
+
+        if found_index == -1:
+            print("Somehow did not find time index!")
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        return found_index
+
+    #enddef
+    
+    # Creates two arrays, one which holds the month and one
+    # which holds the year of every timestep, for quick
+    # referencing later.
+    def calculate_year_month(self):
+        print("Calculating year and month values.")
+        self.year_values=np.zeros(len(self.values),dtype=np.int32)
+        self.month_values=np.zeros(len(self.values),dtype=np.int32)
+
+        # Do this more simply.  Calculate the first value,
+        # and then based on our time axis, we can
+        # fill in the rest.  This is much faster.
+        if self.timestep in ['1M','1Y']:
+            self.year_values[0]=self.get_year(self.values[0])
+            self.month_values[0]=self.get_month(self.values[0])
+
+            iyear=self.year_values[0]
+            imonth=self.month_values[0]
+
+            if self.timestep == '1Y':
+                for itime,rtime in enumerate(self.values[:]):
+                    if itime == 0:
+                        continue
+                    #endif
+                    iyear=iyear+1
+                    self.year_values[itime]=iyear
+                    self.month_values[itime]=imonth
+                #endfor
+            elif self.timestep == '1M':
+                for itime,rtime in enumerate(self.values[:]):
+                    if itime == 0:
+                        continue
+                    #endif
+                    imonth=imonth+1
+                    if imonth > 12:
+                        iyear=iyear+1
+                        imonth=1
+                    #endif
+                    self.year_values[itime]=iyear
+                    self.month_values[itime]=imonth
+                #endfor
+            #endif
+
+            # Check to see if the last value is correct.
+            test_year=self.get_year(self.values[-1])
+            test_month=self.get_month(self.values[-1])
+
+            if test_year != self.year_values[-1] or test_month != self.month_values[-1]:
+                print("Messed up doing the fast calculate_year_month!")
+                print(self.timestep)
+                print("Years: ",self.year_values)
+                print("Months: ",self.month_values)
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            else:
+                print("Successfully created quick month and years.")
+            #endif
+
+
+        else:
+            # Do it the slow way.
+            for itime,rtime in enumerate(self.values[:]):
+                self.year_values[itime]=self.get_year(rtime)
+                self.month_values[itime]=self.get_month(rtime)
+            #endfor
+        #endif
+
+    #endif
     
 #enddef    
 
