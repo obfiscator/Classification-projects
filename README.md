@@ -13,4 +13,6 @@ Current hypothesis is that the training set is too small, or I have too many fea
 # Project 2
 classify_orchidee_timeseries.py
 
+This project creates so-called "stoplight" plots.  Taking a gridded history file from ORCHIDEE output, it extracts variables of interest, and classifies the timeseries of each pixel based on a set of user-defined criteria.  For example, a green pixel may have 80% of annual leaf area index (LAI) values above a value of 4.0 and less than 1% of annual LAI values as NaN.  The script creates maps and outputs example timeseries from each color (dark green, light green, yellow, orange, and red) to show the user the results of the classification.
+
 The rest of the files are modules called by the above two projects.
