@@ -174,7 +174,7 @@ class extracted_variable_class:
             sys.exit(1)
         #endif
 
-        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft","labile_m_n","reserve_m_n","npp","gpp","nbp_pool","leaf_age_crit","leaf_age","leaf_turn_c","lai_mean_gs","fruit_m_c","wstress_season","leaf_m_max_c",'leaf_turn_ageing_c',"sap_m_ab_c","sap_m_be_c","labile_m_c","reserve_m_c","total_m_c"]:
+        if self.name.lower() in ["twbr","veget_cov_max","lai","ind","lai_mean","lai_max","veget_max","sap_m_ab","sap_m_be","heart_m_be","heart_m_ab","total_soil_carb","total_bm_litter","litter_str_ab","litter_met_ab","litter_str_be","litter_met_be","wood_harvest_pft","labile_m_n","reserve_m_n","npp","gpp","nbp_pool","leaf_age_crit","leaf_age","leaf_turn_c","lai_mean_gs","fruit_m_c","wstress_season","leaf_m_max_c",'leaf_turn_ageing_c',"sap_m_ab_c","sap_m_be_c","labile_m_c","reserve_m_c","total_m_c","height","recruits_ind"]:
             self.time_aggregation_operation="ave"
         elif self.name.lower() in ["areas","contfrac"]:
             self.time_aggregation_operation="none" # no time axis
@@ -809,8 +809,8 @@ def extract_timeseries(input_file_name,timeseries_variable,pft_selected,veget_ma
                     # TESTING
                     icounter=icounter+1
                 #endif
-            elif timeseries_variable == "TWBR":
-                if not np.ma.is_masked(srcnc["TWBR"][0, ilat, ilon]):
+            elif timeseries_variable in ["TWBR","HEIGHT"]:
+                if not np.ma.is_masked(srcnc[timeseries_variable][0, ilat, ilon]):
 
                     #print("Found a point!",srcnc["VEGET_MAX"][0, pft_selected, ilat, ilon])
                     # My new array is not masked.  So convert the masked
@@ -821,6 +821,7 @@ def extract_timeseries(input_file_name,timeseries_variable,pft_selected,veget_ma
 
                     # TESTING
                     icounter=icounter+1
+
                 #endif
 
             elif timeseries_variable == "N_RESERVES":

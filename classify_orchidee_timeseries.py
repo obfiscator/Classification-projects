@@ -48,7 +48,7 @@ import re
 # Import from local routines
 from grid import Grid
 from extraction_subroutines import extract_variables_from_file,extract_timeseries,read_in_extracted_timeseries
-from classification_subroutines import classify_observations,plot_classified_observations,map_classified_pixels,extract_and_calculate_classifiction_metrics,simulation_parameters
+from classification_subroutines import classify_observations,plot_classified_observations,map_classified_pixels,extract_and_calculate_classifiction_metrics,simulation_parameters,create_netcdf_classification_map
 ###############################################
 
 
@@ -76,8 +76,9 @@ parser.add_argument('--plot_years', dest='plot_years', action='store',
                    default="101,150",
                    help='the years of the timeseries to plot in the example timeseries.  101,150 is good for forests since they are mature, but croplands and grasslands may be different.   If you plot more than 50 years with annual data, it can be hard to see behavior.')
 parser.add_argument('--global_operation', dest='global_operation', action='store',
-                   default="sum", choices=['weightedpftsum','ave'],
-                   help='how to combine the pixels for plotting the global timeseries.  Choices are sum and ave.')
+                   default='simplesum', choices=["simplesum",'weightedpftsum',"weightedareasum",'weightedpftave'],
+                   help='how to combine the pixels for plotting the global timeseries.  Choices are simplesum, weightedpftsum, weightedareasum, and weightedpftave.')
+
 parser.add_argument('--year_increment', dest='year_increment', action='store',
                    default=1, type=int,
                    help='the number of years each of our history files covers (default 1, for a TEST run...10 is common for PROD runs)')
@@ -122,6 +123,8 @@ print("Using a veget_max cutoff of {} (use the --vmt flag to change)".format(veg
 timeseries_flag=args.timeseries_flag
 if timeseries_flag == "LAI_MEAN1":
     print("Extracting the LAI_MEAN timeseries for every pixel, and classifying only using LAI_MEAN information. (use the --classification flag to change)")
+elif timeseries_flag == "LAI_MEAN_RMSD":
+    print("Extracting the LAI_MEAN timeseries for every pixel, and classifying only using LAI_MEAN information, primarily the RMSD. (use the --classification flag to change)")
 elif timeseries_flag == "LAI_MEAN2":
     print("Extracting the LAI_MEAN timeseries for every pixel, and classifying only using LAI_MEAN and IND information. (use the --classification flag to change)")
 elif timeseries_flag == "LAI_MEAN_BIMODAL":
@@ -134,6 +137,9 @@ elif timeseries_flag == "N_RESERVES":
 
 elif timeseries_flag == "TOTAL_M_c":
     print("Extracting the timeseries for the total carbon biomass, and classyfing the timeseries only on them.  Checking for accumulating biomass over hundreds of years, as pixels should in theory reach maximum biomass in 300 years or so (use the --classification flag to change)")
+
+elif timeseries_flag == "HEIGHT":
+    print("Extracting the timeseries for the vegetation height, and classyfing the timeseries only on them.  Checking for frequent drops of vegetation height back to some initial value, which suggests frequent die-offs (use the --classification flag to change)")
 
 else:
     print("Do not understand what classification you want me to do. (unknown --classification flag value {}".format(timeseries_flag))
@@ -238,6 +244,8 @@ elif global_operation == "weightedpftsum":
     print("Summing together all the pixels taking into account the fraction of a pixel covered by this PFT AND the pixel area to create a global timeseries (use the --global_operation flag to change)")
 elif global_operation == "weightedareasum":
     print("Summing together all the pixels taking into account only the area of the pixel to create a global timeseries (use the --global_operation flag to change)")
+elif global_operation == "weightedpftave":
+    print("Summing together all the pixels taking into account the fraction of a pixel covered by this PFT AND the pixel area, and then divide by the total PFT area to create a global timeseries (use the --global_operation flag to change)")
 else:
     print("Not yet ready for this global operation! ",global_operation)
     sys.exit(1)
@@ -272,7 +280,7 @@ else:
 print("######################## END INPUT VALUES ######################")
 
 # To make things easier, pass around a stucture with simulation parameters.
-sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename)
+sim_params=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename)
 
 ###############################################
 
@@ -284,16 +292,16 @@ sim_parms=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag
 # I tried to use ncrcat for this, but ORCHIDEE uses the variable
 # time_counter instead of time, so it didn't work for me.
 # This creates a new .nc file that I can read in later. 
-sim_parms.set_extraction_information(syear_data,eyear_data,year_increment,input_file_name_start,input_file_name_end)
+sim_params.set_extraction_information(syear_data,eyear_data,year_increment,input_file_name_start,input_file_name_end)
 
 # If the data file exists, we don't have to create it.
 try:
-    srcnc = NetCDFFile(sim_parms.condensed_nc_file_name,"r")
+    srcnc = NetCDFFile(sim_params.condensed_nc_file_name,"r")
     srcnc.close()
-    print("Data file already exists: ",sim_parms.condensed_nc_file_name)
+    print("Data file already exists: ",sim_params.condensed_nc_file_name)
 except:
-    print("Need to create file: ",sim_parms.condensed_nc_file_name)
-    extract_variables_from_file(sim_parms)
+    print("Need to create file: ",sim_params.condensed_nc_file_name)
+    extract_variables_from_file(sim_params)
 #endtry
 
 if extract_only:
@@ -308,7 +316,7 @@ if extract_only:
 # Set up some information for the classification procedure
 # This routine also checks to make sure we have
 # the variables we need for the classification.
-sim_parms.set_classification_filename_information()
+sim_params.set_classification_filename_information()
 ##########################################################
 
 ###############################################################
@@ -347,24 +355,32 @@ sim_parms.set_classification_filename_information()
 # timeseries_lon[i]
 # classification_array[i,time]
 # timeseries variable
-timeseries_array,timeseries_lat,timeseries_lon, classification_array,classified_points=extract_and_calculate_classifiction_metrics(sim_parms)
+timeseries_array,timeseries_lat,timeseries_lon, classification_array,classified_points=extract_and_calculate_classifiction_metrics(sim_params)
 
 
 ##########################################################
 # Based on the classification vector for each timeseries, classify
 # it.  We aim to identify good, ok, and bad points.
 # classification_vector[i]
-classification_vector=classify_observations(classification_array,sim_parms)
+classification_vector=classify_observations(classification_array,sim_params)
 ##########################################################
 
 ##########################################################
 # Generate a few random plots of each classification.
-level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_parms,syear_plot,eyear_plot,classification_array,classified_points)
+level_colors,colors_by_level=plot_classified_observations(classification_vector,timeseries_array,timeseries_lat,timeseries_lon,sim_params,syear_plot,eyear_plot,classification_array,classified_points)
 ##########################################################
 
 ##########################################################
 # Plot a map of all classified pixels.
-map_classified_pixels(classification_vector,timeseries_lat,timeseries_lon,level_colors,colors_by_level,sim_parms)
+map_classified_pixels(classification_vector,timeseries_lat,timeseries_lon,level_colors,colors_by_level,sim_params)
+##########################################################
+
+##########################################################
+# Print a NetCDF file containing with the classification and the
+# timeseries for every pixel to make it easier to hunt down bad pixels.
+# This is not perfect, since it's only one of the timeseries used in the
+# classification, but 
+create_netcdf_classification_map(classification_vector,timeseries_lat,timeseries_lon,sim_params)
 ##########################################################
 
 

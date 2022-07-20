@@ -13,6 +13,7 @@ from textwrap import fill # legend text can be too long
 import matplotlib as mpl
 import re
 import statistics
+from scipy.stats import pearsonr
 
 # Import from local routines myself and colleagues have written
 from grid import Grid
@@ -38,7 +39,7 @@ class simulation_parameters:
         self.veget_max_threshold = veget_max_threshold
         self.timeseries_flag=timeseries_flag
         self.do_test=do_test
-        self.ntest_points=10
+        self.ntest_points=100
         self.global_operation=global_operation
         self.force_annual=force_annual
         self.fix_time_axis=fix_time_axis
@@ -66,7 +67,7 @@ class simulation_parameters:
         # If a variable is not found, skip it.  Extracting variables takes
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c"]
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 
@@ -80,11 +81,12 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
-        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB_c":"stomate","SAP_M_BE_c":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate","RESERVE_M_c":"stomate","LABILE_M_c":"stomate","TOTAL_M_c" : "stomate"}
+        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB_c":"stomate","SAP_M_BE_c":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate","RESERVE_M_c":"stomate","LABILE_M_c":"stomate","TOTAL_M_c" : "stomate","HEIGHT_DOM" : "stomate","RECRUITS_IND" : "stomate","tair" : "sechiba", "swdown" : "sechiba", "rain" : "sechiba", "snowf" : "sechiba"}
 
-        if self.timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL"):
+        if self.timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL","LAI_MEAN_RMSD"):
             #self.variables_to_extract=["LAI_MEAN","LAI_MAX","VEGET_MAX","IND","time_counter_bounds"]
             #self.variables_in_which_file=["stomate","stomate","stomate","stomate","stomate"]
+#            self.timeseries_variable="LAI_MEAN_GS"
             self.timeseries_variable="LAI_MEAN"
         elif self.timeseries_flag in ("TWBR"):
             #self.variables_to_extract=["time_counter_bounds","TWBR"]
@@ -98,6 +100,8 @@ class simulation_parameters:
             # make it general
         elif self.timeseries_flag in ("TOTAL_M_c"):
             self.timeseries_variable="TOTAL_M_c"
+        elif self.timeseries_flag in ("HEIGHT"):
+            self.timeseries_variable="HEIGHT_DOM"
         else:
             print("I do not recognize this timeseries flag in init sim param!")
             print(self.timeseries_flag)
@@ -165,7 +169,7 @@ class simulation_parameters:
 
         # What fraction of our datapoints need to be above this in order for it to be good?
         self.lai_high_threshold_good_fraction=0.8
-        self.lai_high_threshold_bad_fraction=0.2 # if it's never more than this, it's bad
+        self.lai_high_threshold_bad_fraction=0.1 # if it's never more than this, it's bad
 
 
         # A lower limit to the LAI
@@ -180,7 +184,7 @@ class simulation_parameters:
         #endif
 
         # What fraction of our datapoints need to be below this in order for it to be bad?
-        self.lai_low_threshold_bad_fraction=0.9
+        self.lai_low_threshold_bad_fraction=0.8
         self.lai_low_threshold_good_fraction=0.1 # this can be good
 
         # How big of LAI jumps do we start getting concerned about?
@@ -219,6 +223,56 @@ class simulation_parameters:
 
         # This is for the total biomass
         self.totalmc_ndecades=34
+
+        # This is for the height.
+        # I got these values by looking at a bunch of annual values
+        # for the heights in a run starting from scratch on various pixels.
+        # The results seem to be within 10% of each other.
+        height_thresholds=np.zeros((15))
+        height_thresholds[0]=0.0
+        height_thresholds[1]=4.2
+        height_thresholds[2]=4.1
+        height_thresholds[3]=3.8
+        height_thresholds[4]=4.1
+        height_thresholds[5]=3.0
+        height_thresholds[6]=3.0
+        height_thresholds[7]=2.1
+        height_thresholds[8]=3.1
+        # Crops and grasslands have a height of 0.0.
+        # Not sure it makes sense to do anything for them.
+        height_thresholds[9]=0.0
+        height_thresholds[10]=0.0
+        height_thresholds[11]=0.0
+        height_thresholds[12]=0.0
+        height_thresholds[13]=0.0
+        height_thresholds[14]=0.0
+        self.height_threshold=height_thresholds[pft_selected]
+
+        # This is for the RMSD of the LAI.
+        # I got these values by looking at the distributions of RMSD for
+        # the LAI for each PFT.  I tried to get about a quarter of the pixels
+        # in each classification (1: less than low; 2: less than medium; 
+        # 3: less than high; 4: greater than high)
+        lai_rmsd_thresholds=np.zeros((15,3))
+        lai_rmsd_thresholds[0,:]=(0.0,0.0,0.0)
+        lai_rmsd_thresholds[1,:]=(0.4,0.6,0.9)
+        lai_rmsd_thresholds[2,:]=(0.5,0.8,1.3)
+        lai_rmsd_thresholds[3,:]=(0.4,0.8,1.1)
+        lai_rmsd_thresholds[4,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[5,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[6,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[7,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[8,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[9,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[10,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[11,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[12,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[13,:]=(0.2,1.0,2.0)
+        lai_rmsd_thresholds[14,:]=(0.2,1.0,2.0)
+        
+        self.lai_high_threshold_rmsd=lai_rmsd_thresholds[pft_selected,2]
+        self.lai_medium_threshold_rmsd=lai_rmsd_thresholds[pft_selected,1]
+        self.lai_low_threshold_rmsd=lai_rmsd_thresholds[pft_selected,0]
 
     #enddef
 
@@ -293,32 +347,37 @@ class simulation_parameters:
         srcnc = NetCDFFile(self.condensed_nc_file_name,"r")
         veget_max_name=find_variable(["VEGET_MAX","VEGET_COV_MAX"],srcnc,False,"",lcheck_units=False)
         lai_mean_name=find_variable(["LAI","LAI_MEAN"],srcnc,False,"",lcheck_units=False)
-        #lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
+        # This is for the growing season
+        lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
         lai_max_name=find_variable(["LAI","LAI_MAX"],srcnc,False,"",lcheck_units=False)
         self.set_variable_names(veget_max_name,lai_mean_name,lai_max_name)
 
 
         # Check that we have all the variables that we need.
-        required_vars=[]
+        self.required_vars=[]
         if self.timeseries_flag == "LAI_MEAN1":
-            required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name]
         elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
-            required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name]
         elif self.timeseries_flag == "LAI_MEAN2":
-            required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name]
+        elif self.timeseries_flag == "LAI_MEAN_RMSD":
+            self.required_vars=[veget_max_name,lai_mean_name]
         elif self.timeseries_flag == "TWBR":
-            required_vars=['TWBR']
+            self.required_vars=['TWBR']
+        elif self.timeseries_flag == "HEIGHT":
+            self.required_vars=['HEIGHT','IND','RECRUITS_IND']
         elif self.timeseries_flag == "N_RESERVES":
-            required_vars=[veget_max_name,"RESERVE_M_n","LABILE_M_n","RESERVE_M_c","LABILE_M_c","SAP_M_AB_c","SAP_M_BE_c"]
+            self.required_vars=[veget_max_name,"RESERVE_M_n","LABILE_M_n","RESERVE_M_c","LABILE_M_c","SAP_M_AB_c","SAP_M_BE_c"]
         elif self.timeseries_flag == "TOTAL_M_c":
-            required_vars=['TOTAL_M_c']
+            self.required_vars=['TOTAL_M_c']
         else:
             print("Do not recognize timeseries flag in set_classification_filename_information!")
             print(self.timeseries_flag)
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
-        for varname in required_vars:
+        for varname in self.required_vars:
             if varname not in srcnc.variables.keys():
                 print("Cannot find an analysis variable I need in the extracted data file!")
                 print("File location: ",srcnc.filepath())
@@ -333,6 +392,9 @@ class simulation_parameters:
         self.global_plot_scale=1.0
         self.global_plot_units='-'
         
+        # Store the names of all the variables we will need.
+        self.variables_used=[]
+
         # These names will depend on the analysis we are doing
         if self.timeseries_flag == "LAI_MEAN1":
 
@@ -369,6 +431,44 @@ class simulation_parameters:
             self.plot_subtitle.append("Good growth for PFT {0}, classification based only on {1}\nA pixel in this category has at least {2}% of annual {1} values above {3},\n    AND no more than {4}% of annual {1} values below {5}".format(self.pft_selected+1,self.lai_mean_name,self.lai_high_threshold_good_fraction*100.0*self.good_growth,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold))
             # Level 5
             self.plot_subtitle.append("Excellent growth for PFT {0}, classification based only on {1}\nA pixel in this category has at least {2}% of annual {1} values above {3},\n    AND no more than {4}% of annual {1} values below {5},\n    AND no more than {6}% of the annual {1} values are NaNs.".format(self.pft_selected+1,self.lai_mean_name,self.lai_high_threshold_good_fraction*100.0,self.lai_good_threshold,self.lai_low_threshold_good_fraction*100.0,self.lai_bad_threshold,self.nan_good_threshold*100.0))
+
+            ########
+        elif self.timeseries_flag == "LAI_MEAN_RMSD":
+
+            # For the name of the file with the map.  I will use this
+            # identifier elsewhere, too.
+            self.cmap_identifier="{}PFT{}_LAIMEANRMSD".format(self.output_file_string,self.pft_selected+1)
+
+            # And the title of the map itself
+            self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe {} timeseries for PFT {}".format(self.sim_name,self.tag_version,self.lai_mean_name,self.pft_selected+1)
+
+            # Units on the y-axis of the plot
+            self.ylabel="{} [{}]".format(lai_mean_name,srcnc[lai_mean_name].units)
+
+            # For the name of the file with the histograms of the classifiers
+            self.class_histogram_filename="classification_histogram_{}PFT{}_LAIMEANRMSD.png".format(self.output_file_string,self.pft_selected+1)
+
+            # For the name of the file with the timeseries
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_LAIMEANRMSD.png".format(self.output_file_string,self.pft_selected+1)
+
+
+            # This is a subtitle that identifies what we've done
+            # a little better
+            self.plot_subtitle=[]
+            # Level 1
+            self.plot_subtitle.append("Problem pixels for PFT {0}, classification based only on {1}\nA pixel in this category has more than {2}% of the annual {1} values as NaNs\n    OR more than {2}% of the annual {1} values as 0.0\n    OR more than {2}% of the annual {1} values less than {3}.".format(self.pft_selected+1,self.lai_mean_name,self.nan_bad_threshold*100.0,self.zero_threshold))
+            # Level 2
+            self.plot_subtitle.append("Extreme fluctuation for PFT {0}, classification based only on {1}\nPixels in this category has an RMSD of the annual {1} values greater than {2}".format(self.pft_selected+1,self.lai_mean_name,self.lai_high_threshold_rmsd))
+
+            # Level 3
+            self.plot_subtitle.append("High fluctuation for PFT {0}, classification based only on {1}\nPixels in this category has an RMSD of the annual {1} values greater than {2}".format(self.pft_selected+1,self.lai_mean_name,self.lai_medium_threshold_rmsd))
+
+            # Level 4
+            self.plot_subtitle.append("Medium fluctuation for PFT {0}, classification based only on {1}\nPixels in this category has an RMSD of the annual {1} values greater than {2}".format(self.pft_selected+1,self.lai_mean_name,self.lai_low_threshold_rmsd))
+
+            # Level 5
+            self.plot_subtitle.append("Low fluctuation for PFT {0}, classification based only on {1}\nPixels in this category has an RMSD of the annual {1} values less than {2}".format(self.pft_selected+1,self.lai_mean_name,self.lai_low_threshold_rmsd))
+
 
         elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
 
@@ -502,6 +602,41 @@ class simulation_parameters:
             self.global_plot_scale=1e-15 # assuming we are in grams
             self.global_plot_units='Pg C' # this is a stock, not a flux
 
+            #####
+        elif self.timeseries_flag == "HEIGHT":
+
+            # For the name of the file with the map.  I will use this
+            # identifier elsewhere, too.
+            self.cmap_identifier="{}PFT{}_HEIGHT".format(self.output_file_string,self.pft_selected+1)
+
+            # For the name of the file with the map
+            self.classified_map_filename="classified_map_{}PFT{}_HEIGHT.png".format(self.output_file_string,self.pft_selected+1)
+            # And the title of the map itself
+            self.classified_map_title="{} - TAG {}\nEach pixel classified according to\nthe height timeseries for PFT {}".format(self.sim_name,self.tag_version,self.pft_selected+1)
+
+            # Units on the y-axis of the plot
+            self.ylabel="{}\n[{}]".format("HEIGHT",srcnc[self.timeseries_variable].units)
+            # For the name of the file with the histograms of the classifiers
+            self.class_histogram_filename="classification_histogram_{}PFT{}_HEIGHT.png".format(self.output_file_string,self.pft_selected+1)
+
+            # For the name of the file with the timeseries
+            self.classified_timeseries_filename="classified_timeseriesXXXX_{}PFT{}_HEIGHT.png".format(self.output_file_string,self.pft_selected+1)
+
+            # This is a subtitle that identifies what we've done
+            # a little better
+            self.plot_subtitle=[]
+            self.plot_subtitle.append("PFT {}, classification based on the height of the vegetation.\nThis classification is complicated.\nA red pixel has a low maximum height and/or many disturbances.".format(self.pft_selected+1))
+            self.plot_subtitle.append("PFT {}, classification based on the height of the vegetation.\nAn orange pixel means that the correlation between NPP and height is less than -0.5.".format(self.pft_selected+1))
+
+            self.plot_subtitle.append("PFT {}, classification based on the height of the vegetation.\nThis is a pixel that doesn't fall in any other category.".format(self.pft_selected+1))
+
+            self.plot_subtitle.append("PFT {}, classification based on the height of the vegetation.\nA light green means the timeseries has not been disturbed\n   AND 80% of annual height values are above {:6.2f} meters.".format(self.pft_selected+1,self.height_threshold*2.0))
+            self.plot_subtitle.append("PFT {}, classification based on the height of the vegetation.\nA dark green means the timeseries has not been disturbed\n   AND 80% of annual height values are above {:6.2f} meters.".format(self.pft_selected+1,self.height_threshold*3.0))
+
+            # Some information for the a global plot of this variable
+            self.global_plot_scale=1e-15 # assuming we are in grams
+            self.global_plot_units='Pg C' # this is a stock, not a flux
+
 
 
         else:
@@ -526,7 +661,7 @@ class simulation_parameters:
         
         # Our timeseries variable depends on this, too.
 
-        if self.timeseries_flag in ["LAI_MEAN1","LAI_MEAN_BIMODAL","LAI_MEAN2"]:
+        if self.timeseries_flag in ["LAI_MEAN1","LAI_MEAN_BIMODAL","LAI_MEAN2","LAI_MEAN_RMSD"]:
             self.timeseries_variable=lai_mean_name
      
 
@@ -543,6 +678,11 @@ class simulation_parameters:
         elif self.timeseries_flag == "TOTAL_M_c":
 
             self.timeseries_variable="TOTAL_M_c"
+
+        elif self.timeseries_flag == "HEIGHT":
+
+            self.timeseries_variable="HEIGHT"
+
         else:
             print("Do not recognize timeseries flag in set_variable_names!")
             print(self.timeseries_flag)
@@ -615,6 +755,44 @@ def classify_observations(classification_array,sim_params):
             #endif
         #endfor
 
+    elif sim_params.timeseries_flag == "LAI_MEAN_RMSD":
+
+        for isample in range(nsamples):
+
+            # Set three thresholds.  "Bad" is seperate, the same as LAI_MEAN1.
+            # 0 : Fraction of annual LAI_MEAN values above an ideal threshold
+            # 1 : Fraction of annual LAI_MEAN values below a different threshold
+            # 2 : Fraction of annual LAI_MEAN values are NaNs
+            # 3 : Fraction of timesteps when LAI_MEAN changes by more than 0.2
+            # 4 : Fraction of annual LAI_MEAN values are zero
+            # 5 : Fraction of annual LAI_MEAN values are close to zero
+            # 6 : Fraction of annual LAI_MEAN values above a good threshold
+            # 7 : RMSD of the annual LAI_MEAN values
+
+            if (classification_array[isample,2] > sim_params.nan_bad_threshold) or (classification_array[isample,4] > sim_params.nan_bad_threshold) or (classification_array[isample,5] > sim_params.nan_bad_threshold):
+                # Bad
+                classification_vector[isample]=1
+            elif (classification_array[isample,7] > sim_params.lai_high_threshold_rmsd):
+                # Semi-bad
+                classification_vector[isample]=2
+            elif (classification_array[isample,7] > sim_params.lai_medium_threshold_rmsd):
+                # Okay
+                classification_vector[isample]=3
+            elif (classification_array[isample,7] > sim_params.lai_low_threshold_rmsd):
+                # Semi-good
+                classification_vector[isample]=4
+            elif (classification_array[isample,7] <= sim_params.lai_low_threshold_rmsd):
+                # Good
+                classification_vector[isample]=5
+                #endif
+            else:
+                # Should not be here
+                print("Not sure how to classify this pixel in LAI_MEAN_RMSD!")
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            #endif
+        #endfor
+
     elif sim_params.timeseries_flag == "LAI_MEAN_BIMODAL":
 
         for isample in range(nsamples):
@@ -646,6 +824,54 @@ def classify_observations(classification_array,sim_params):
             else:
                 # Ok?  Unclassifiable
                 classification_vector[isample]=3
+            #endif
+        #endfor
+
+    elif sim_params.timeseries_flag == "HEIGHT":
+
+        for isample in range(nsamples):
+
+            # For this classification, only use three colors.
+            # "Good": 98% above a certain threshold
+            # "Semi-good": Not used
+            # "OK" : Everything else.
+            # "Semi-bad": Not used.
+            # "Bad": 20% below a certain threshold
+            # 0 : Maximum value.  
+            # 1 : Minimum value.  
+            # 2 : Fraction of values below a threshold
+            # 3 : Penalizing drops
+
+            # I pick these thresholds by looking at the historgram
+            # after a run.
+            # Ok?
+            classification_vector[isample]=3
+            if classification_array[isample,0] < sim_params.height_threshold*1.5:
+                # Bad.  Maximum height should be more than 50% of the starting
+                # value!
+                classification_vector[isample]=1
+            elif classification_array[isample,3] < 100:
+                # Bad...maximum 100 years between cuts
+                classification_vector[isample]=1
+            # Oddly behaving pixels
+            #elif not np.isnan(classification_array[isample,5]) and classification_array[isample,5] < -0.5:
+                # correlation between GPP and LAI
+            #    classification_vector[isample]=2
+            elif not np.isnan(classification_array[isample,7]) and classification_array[isample,7] < -0.5:
+                # correlation between NPP and height
+                classification_vector[isample]=2
+            # These are "good" pixels
+            elif classification_array[isample,4] == 0:
+                #print("ijfeow ",isample,classification_array[isample,8],classification_array[isample,9])
+                # No breaks.
+                if classification_array[isample,8] > 0.8:
+                    # Lot of values above a threshold
+                    classification_vector[isample]=5
+                elif classification_array[isample,9] > 0.8:
+                    # lot of values above a lower threshold
+                    classification_vector[isample]=4
+                #endif
+                
             #endif
         #endfor
 
@@ -1029,7 +1255,7 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
     #####
     # I want to plot a global timeseries by combining all these pixels
     xmin=1
-    xmax=eyear-syear+1
+    xmax=sim_params.eyear-sim_params.syear+1
     global_timeseries=np.zeros((timeseries_array.shape[1]),dtype=np.float32)
     ntimeseries=timeseries_array.shape[0]
     if sim_params.global_operation == "simplesum":
@@ -1041,7 +1267,16 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
         for itimeseries in range(ntimeseries):
             global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]*classified_points[ipoint].veget_max[:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
         #endfor
-        axis_title="Global timeseries, where {} classified pixels are summed together".format(ntimeseries)
+        axis_title="Global timeseries for PFT{}, where {} classified pixels are summed together".format(sim_params.pft_selected+1,ntimeseries)
+    elif sim_params.global_operation == "weightedpftave":
+        total_area=np.zeros((len(global_timeseries)))
+        for itimeseries in range(ntimeseries):
+            global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]*classified_points[ipoint].veget_max[:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
+            total_area[:]=total_area[:]+classified_points[ipoint].veget_max[:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
+        #endfor
+        global_timeseries[:]=global_timeseries[:]/total_area[:]
+        axis_title="Global timeseries for PFT{}, where {} classified pixels are summed together".format(sim_params.pft_selected+1,ntimeseries)
+
     elif sim_params.global_operation == "weightedareasum":
         for itimeseries in range(ntimeseries):
             global_timeseries[:]=global_timeseries[:]+timeseries_array[itimeseries,:]*classified_points[ipoint].contfrac*classified_points[ipoint].area
@@ -1071,9 +1306,6 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
     #ax2.set_axis_off()
     fig.savefig(sim_params.classified_timeseries_filename.replace("XXXX","{}".format("_global")),dpi=300)
     plt.close(fig) 
-    
-    print("hfioewe")
-    sys.exit(1)
 
     return level_colors,colors_by_level
 #enddef
@@ -1179,7 +1411,7 @@ def map_classified_pixels(classification_vector,timeseries_lat,timeseries_lon,le
         for ilon in range(nlons):
 
             # This will depend on the classification scheme.  
-            if sim_params.timeseries_flag in ("LAI_MEAN1","N_RESERVES","TOTAL_M_c"):
+            if sim_params.timeseries_flag in ("LAI_MEAN1","N_RESERVES","TOTAL_M_c","HEIGHT","LAI_MEAN_RMSD"):
                 if not np.ma.is_masked(srcnc[veget_max_name][0, pft_selected, ilat, ilon]):
                     # Leave it blank if no PFT is there
                     if srcnc[veget_max_name][0, pft_selected, ilat, ilon] == 0.0:
@@ -1309,6 +1541,19 @@ def extract_and_calculate_classifiction_metrics(sim_params):
         # 5 : Fraction of annual LAI_MEAN values are close to zero
         # 6 : Fraction of annual LAI_MEAN values above a good threshold
 
+    elif timeseries_flag in ("LAI_MEAN_RMSD"):
+        classification_array=np.zeros((npoints,8))
+
+        # How many different criteria?
+        # 0 : Fraction of annual LAI_MEAN values above an ideal threshold
+        # 1 : Fraction of annual LAI_MEAN values below a different threshold
+        # 2 : Fraction of annual LAI_MEAN values are NaNs
+        # 3 : Fraction of timesteps when LAI_MEAN changes by more than 0.2
+        # 4 : Fraction of annual LAI_MEAN values are zero
+        # 5 : Fraction of annual LAI_MEAN values are close to zero
+        # 6 : Fraction of annual LAI_MEAN values above a good threshold
+        # 7 : RMSD of annual LAI_MEAN values
+
     elif timeseries_flag == "LAI_MEAN2":
         classification_array=np.zeros((npoints,4))
 
@@ -1317,6 +1562,17 @@ def extract_and_calculate_classifiction_metrics(sim_params):
         # 1 : Number of times below a threshold
         # 2 : Number of times IND is above a certain threshold
         # 3 : Number of NaNs present in the LAI_MEAN timeseries
+
+
+    elif sim_params.timeseries_flag == "HEIGHT":
+
+        classification_array=np.zeros((npoints,10))
+
+        # 0 : Maximum value.  
+        # 1 : Minimum value.  
+        # 2 : Fraction of values below a threshold
+        # 3 : Penalizing drops
+        # 4 : Rewarding growth
 
 
     elif sim_params.timeseries_flag == "TWBR":
@@ -1399,7 +1655,7 @@ def keep_grid_point(srcnc,pft_selected,ilat,ilon,veget_max_threshold,timeseries_
     # Check to see if, based on the timeseries we are looking for and the PFT, we want
     # to keep this gridpoint.
 
-    if timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL","N_RESERVES","TOTAL_M_c"):
+    if timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL","N_RESERVES","TOTAL_M_c","HEIGHT","LAI_MEAN_RMSD"):
         if not np.ma.is_masked(srcnc[veget_max_name][0, pft_selected, ilat, ilon]):
             if srcnc[veget_max_name][0, pft_selected, ilat, ilon] < veget_max_threshold:
                 lkeep=False
@@ -1473,6 +1729,61 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
         temp_array=np.where(timeseries > sim_params.lai_good_threshold*sim_params.good_growth, True, False)
         carray[6]=float(np.sum(temp_array))/float(len(temp_array))
 
+    elif sim_params.timeseries_flag in ("LAI_MEAN_RMSD"):
+        
+
+        timeseries=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+
+        # How many different criteria?
+        carray=np.zeros((8))
+
+        # 0 : Fraction of LAI_MEAN values above an ideal threshold
+        temp_array=np.where(timeseries > sim_params.lai_good_threshold, True, False)
+        carray[0]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 1 : Fraction of annual LAI_MEAN values below a different threshold
+        temp_array=np.where(timeseries < sim_params.lai_bad_threshold, True, False)
+        carray[1]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 2 : Fraction of annual LAI_MEAN values are NaNs
+        temp_array=np.where(np.isnan(timeseries), True, False)
+        carray[2]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 3 : Number of times LAI_MEAN changes by more than a threshold
+        timestep_diff=[]
+        for itime in range(1,len(timeseries)):
+            if not np.isnan(timeseries[itime]) and not np.isnan(timeseries[itime-1]):
+                timestep_diff.append(float(timeseries[itime]-timeseries[itime-1]))
+            #endif
+        #endfor
+        timestep_diff=np.asarray(timestep_diff)
+        temp_array=np.where(timestep_diff > sim_params.lai_diff_bad_threshold, True, False)
+        if len(temp_array) != 0:
+            carray[3]=float(np.sum(temp_array))/float(len(temp_array))
+        #endif
+
+        # 4 : Fraction of annual LAI_MEAN values are zero
+        temp_array=np.where(timeseries==0.0, True, False)
+        carray[4]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 5 : Fraction of annual LAI_MEAN values are close to zero
+        temp_array=np.where(timeseries < sim_params.zero_threshold, True, False)
+        carray[5]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 6 : Fraction of LAI_MEAN values above a good threshold
+        temp_array=np.where(timeseries > sim_params.lai_good_threshold*sim_params.good_growth, True, False)
+        carray[6]=float(np.sum(temp_array))/float(len(temp_array))
+
+        # 7 : RMSD of annual LAI_MEAN values
+        timeseries_mean=np.mean(timeseries)
+        rmsd=0.0
+        for itime,rtime in enumerate(timeseries):
+            rmsd=rmsd+(timeseries_mean-rtime)**2
+        #endfor
+        rmsd=np.sqrt(rmsd/len(timeseries))
+        carray[7]=rmsd
+
+
     elif sim_params.timeseries_flag == "LAI_MEAN2":
 
         timeseries=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
@@ -1490,6 +1801,227 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
         # 2 : Number of times IND is above a certain threshold
         temp_array=np.where(timeseries > sim_params.ind_upper_threshold, True, False)
         carray[2]=np.sum(temp_array)
+
+    elif sim_params.timeseries_flag == "HEIGHT":
+
+        timeseries_height=srcnc[sim_params.timeseries_variable][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries_ind=srcnc["IND"][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries_rind=srcnc["RECRUITS_IND"][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries_lai=srcnc["LAI_MEAN_GS"][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries_gpp=srcnc["GPP"][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+        timeseries_npp=srcnc["NPP"][:, sim_params.pft_selected, ilat, ilon].filled(np.nan)
+
+        # How many different criteria?
+        carray=np.zeros((10))
+
+        # 0 : Maximum value.  
+        carray[0]=np.nanmax(timeseries_height)
+        # 1 : Minimum value.  
+        carray[1]=np.nanmin(timeseries_height)
+
+        # 2 : Fraction of values below a threshold
+        temp_array=np.where(timeseries_height < sim_params.height_threshold, True, False)
+        carray[2]=float(np.sum(temp_array))/float(len(temp_array))
+
+        ### Extract the longest timeseries
+        def extract_longest_timeseries(timeseries_height,timeseries_ind,timeseries_rind):
+            sindex=0
+            eindex=len(timeseries_ind)
+            lbreaks=[]
+            lbreaks.append(False)
+
+            # Identify all the breaks
+            for i in range(1, len(timeseries_ind)):
+                diff=timeseries_ind[i]-timeseries_ind[i-1]
+                if diff>0.0 and diff > timeseries_rind[i] and abs(timeseries_height[i]-timeseries_height[i-1]) > 1.0 :
+                    lbreaks.append(True)
+                else:
+                    lbreaks.append(False)
+                #endif
+            #endif
+
+            # Sometimes there are several breaks in a row.  This is 
+            # some behavior I don't understand,
+            for i in range(1, len(lbreaks)):
+                if lbreaks[i] and lbreaks[i-1]:
+                    lbreaks[i-1]=False
+                #endif
+            #endif
+
+            # If there are no breaks, our task is easy
+            nbreaks=np.sum(lbreaks)
+            if nbreaks != 0:
+                
+                sindices=[]
+                sindices.append(0)
+                eindices=[]
+                for ival,lval in enumerate(lbreaks):
+                    if lval:
+                        sindices.append(ival)
+                        eindices.append(ival)
+                    #endif
+                #endfor
+                eindices.append(len(lbreaks))
+
+                #print('start ieoru ',sindices)
+                #print('end ieoru ',eindices)
+
+                #for i in range(len(timeseries_ind)):
+                
+                #    print('fieo ',i,timeseries_height[i],timeseries_ind[i],timeseries_rind[i],lbreaks[i])
+                #endfor
+
+                longest_break=-1
+                for ibreak in range(len(sindices)):
+                    if eindices[ibreak]-sindices[ibreak]>longest_break:
+                        longest_break=eindices[ibreak]-sindices[ibreak]
+                        sindex=sindices[ibreak]
+                        eindex=eindices[ibreak]
+                    #endif
+                #endif
+            #endif
+
+            return sindex,eindex,nbreaks
+        #enddef
+
+        sindex,eindex,ndrops=extract_longest_timeseries(timeseries_height,timeseries_ind,timeseries_rind)
+
+        # 3 : Penalizing drops.  I want a function that takes
+        # two things into account: closeness of the drop to
+        # the threshold value, and the time since the last drop.
+        # If the height drops to the threshold value after
+        # 200 years, that is not the same thing as if it drops
+        # to the threshold after 10 years.
+        #last_drop=0
+        #penalty=0.0
+        #growth=0.0
+        #ndrops=0
+        #ave_length=0.0
+        #longest_stretch=0
+        #current_stretch=0
+        #for i in range(1, len(timeseries_height)):
+        #    if timeseries_height[i] > 10.0 and timeseries_height[i-1]>10.0:
+        #        longest_stretch=longest_stretch+1
+            #endif
+        #    if timeseries_height[i] < 10.0 and timeseries_height[i-1]>10.0:
+        #        if current_stretch > longest_stretch:
+        #            longest_stretch=current_stretch
+                #endif
+        #        current_stretch=0
+            #endif
+
+        #    value = timeseries_height[i] - timeseries_height[i - 1]
+        #    time_since_last_drop=float(i-last_drop)
+        #    if value < 0.0:
+
+        #        if time_since_last_drop < 20:
+        #            pfactor=3.0
+        #        elif time_since_last_drop < 80:
+        #            pfactor=2.0
+        #        elif time_since_last_drop < 130:
+        #            pfactor=1.0
+        #        else:
+        #            pfactor=0.0
+                #endif
+
+                # If we are within 25% of the threshold, reset
+                # the counter and apply the penalty.  In theory,
+                # a thinning from above can drop the height, but
+                # is not a cause for concern.
+                #if timeseries_ind[i]-timeseries_ind[i-1]>0.0 and timeseries_rind[i] != (timeseries_ind[i]-timeseries_ind[i-1]):
+                #    print("Regrozth? ind ",timeseries_ind[i-1],timeseries_ind[i])
+                #    print("Regth? height ",timeseries[i-1],timeseries[i])
+                #    print("Regth? rind ",timeseries_rind[i-1],timeseries_rind[i])
+
+        #        closeness_to_threshold=timeseries_height[i]/sim_params.height_threshold
+         #       if 1.25 > closeness_to_threshold and abs(value) > 1.0:
+       #             penalty=penalty+pfactor*abs(value)
+       #             ave_length=ave_length+time_since_last_drop
+       #             last_drop=i
+       #             ndrops=ndrops+1
+       #             if timeseries_height[i-1] > 5.0:
+       #                 print("DROP TIMESERIES fd ",timeseries_height)
+       #                 print(closeness_to_threshold,i,timeseries_height[i],sim_params.height_threshold,ndrops,time_since_last_drop,ave_length)
+                    #endif
+                #endif
+       #     else:
+                # Reward growth in the same manner.  Growth at the
+                # beginning of a stand is more critical than growth
+                # in an old stand.
+       #         growth=growth+1.0*np.exp(-0.03465*time_since_last_drop)*abs(value)
+            #endif
+
+        #endfor
+        #      print("ifjeow ",penalty,growth)
+        
+        carray[3]=eindex-sindex
+
+        carray[4]=ndrops
+
+        # Test some correlations.  If there are any NaNs, this doesn't work
+        nans_lai=np.isnan(timeseries_lai[sindex:eindex])
+        nans_gpp=np.isnan(timeseries_gpp[sindex:eindex])
+        nans_npp=np.isnan(timeseries_npp[sindex:eindex])
+        nans_height=np.isnan(timeseries_height[sindex:eindex])
+
+        if nans_lai.any():
+            print("NaNs in LAI! ",timeseries_lai)
+        if nans_gpp.any():
+            print("NaNs in GPP! ",timeseries_gpp)
+        if nans_npp.any():
+            print("NaNs in NPP! ",timeseries_npp)
+        if nans_height.any():
+            print("NaNs in height! ",timeseries_height)
+
+
+#        if not nans_lai.any() and not nans_gpp.any():
+        if True:
+            correlation,dummy_val=pearsonr(timeseries_lai[sindex:eindex],timeseries_gpp[sindex:eindex])
+            carray[5]=correlation
+        else:
+            carray[5]=np.nan
+        #endif
+        if True:
+#        if not nans_npp.any() and not nans_gpp.any():
+            correlation,dummy_val=pearsonr(timeseries_gpp[sindex:eindex],timeseries_npp[sindex:eindex])
+            carray[6]=correlation
+        else:
+            carray[6]=np.nan
+        #endif
+
+        if True:
+#        if not nans_npp.any() and not nans_height.any():
+            correlation,dummy_val=pearsonr(timeseries_npp[sindex:eindex],timeseries_height[sindex:eindex])
+            carray[7]=correlation
+        else:
+            carray[7]=np.nan
+        #endif
+
+        # If there are no drops, try fitting a logarithm growth curve.
+        # This didn't work.  So instead, just figure out how many
+        # values are above a certain threshold.
+
+        #for i in range(len(timeseries_height)):
+        #        print(timeseries_height[i],end=',')
+            #endfor
+        #    for i in range(len(timeseries_height)):
+        #        print(i,end=',')
+            #endfor
+        #    print(timeseries_height)
+        #    sys.exit(1)
+
+        #endif
+        # 8 : Fraction of values above a threshold
+        temp_array=np.where(timeseries_height > sim_params.height_threshold*3.0, True, False)
+        carray[8]=float(np.sum(temp_array))/float(len(temp_array))
+        # 9 : Fraction of values above a lower threshold
+        temp_array=np.where(timeseries_height > sim_params.height_threshold*2.0, True, False)
+        carray[9]=float(np.sum(temp_array))/float(len(temp_array))
+
+
+        timeseries=timeseries_height
+
+        
 
     elif sim_params.timeseries_flag == "TWBR":
 
@@ -1686,4 +2218,115 @@ def compute_metrics_extracted_pixel(srcnc,sim_params,ilat,ilon):
     #endif
 
     return carray,timeseries
+#enddef
+
+#################################################
+# Folks have asked for a way to find problematic pixels
+# more easily.  So this routine prints a NetCDF file with
+# all the variables used in the classification as well as
+# the classification of each pixel.  People can then visualize
+# it by zooming in with Ferret or something.
+def create_netcdf_classification_map(classification_vector,timeseries_lat,timeseries_lon,sim_params):
+
+    
+    print(sim_params.required_vars)
+
+    # Open up the original file
+    srcnc = NetCDFFile(sim_params.condensed_nc_file_name,"r")
+
+    # Get the names of some particular coordinates
+    timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc)
+
+    # Open up the new file for writing
+    output_file=sim_params.condensed_nc_file_name.replace(".nc","_PFT{}_{}_CLASSIFIED.nc".format(sim_params.pft_selected+1,sim_params.timeseries_flag))
+    dstnc = NetCDFFile(output_file,"w")
+
+    # copy all the metadata
+    dstnc.setncatts(srcnc.__dict__)
+    dstnc.setncatts({"NOTE" : "Created after classifying the pixels to allow for easier examination of individual timeseries.  All the variables listed played a role in the classification of the pixel.  Only a single PFT is present, PFT {}.".format(sim_params.pft_selected+1)})
+
+    # Figure out all the dimensions we need.
+    dimensions_needed=[]
+    if vegetcoord not in srcnc.dimensions:
+        print("Could not find a PFT dimension!")
+        print(vegetcoord)
+        print(srcnc.dimensions)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
+
+    for varname in sim_params.required_vars:
+        for dim in srcnc[varname].dimensions:
+            if dim not in dimensions_needed and dim != vegetcoord:
+                print("Keeping dimension: ",varname,dim)
+                dimensions_needed.append(dim)
+            #endif
+        #endfor
+    #endfor
+
+    for name, dimension in srcnc.dimensions.items():
+        if name in dimensions_needed:
+            dstnc.createDimension(name, (len(dimension) if not dimension.isunlimited() else None))
+        #endif
+    #endfor
+
+    # Create all the variables, including dimension variables.
+    # If there is a PFT dimension, eliminate it.
+    for name, variable in srcnc.variables.items():
+        if name in dimensions_needed or name in sim_params.required_vars:
+            if vegetcoord in variable.dimensions:
+                dimensions=list(variable.dimensions)
+                dimensions.remove(vegetcoord)
+                idim=variable.dimensions.index(vegetcoord)
+                x = dstnc.createVariable(name, variable.datatype, tuple(dimensions))
+                # copy variable attributes all at once via dictionary
+                dstnc[name].setncatts(srcnc[name].__dict__)
+                if len(variable.dimensions) == 4:
+                    if idim == 1:
+                        dstnc[name][:,:,:]=srcnc[name][:,sim_params.pft_selected,:,:]
+                    else:
+                        print("Not yet sure how to treat this case!")
+                        print("Number of dimensions: ",len(variable.dimensions))
+                        print("Dimension of PFT dimension: ",idim)
+                        print(name,variable.dimensions)
+                        traceback.print_stack(file=sys.stdout)
+                        sys.exit(1)
+                    #endif
+                else:
+                    print("Not yet sure how to treat this case!")
+                    print("Number of dimensions: ",len(variable.dimensions))
+                    print("Dimension of PFT dimension: ",idim)
+                    print(name,variable.dimensions)
+                    traceback.print_stack(file=sys.stdout)
+                    sys.exit(1)
+                #endif
+            else:
+                x = dstnc.createVariable(name, variable.datatype, variable.dimensions)
+                # copy variable attributes all at once via dictionary
+                dstnc[name].setncatts(srcnc[name].__dict__)
+                dstnc[name][:]=srcnc[name][:]
+            #endif
+        #endif
+    #endfor
+
+    # Now I need to add the classification map
+    varname="classification"
+    dimensions=(latcoord,loncoord)
+    x = dstnc.createVariable(varname, 'f4', dimensions)
+    nlats=len(srcnc[latcoord][:])
+    nlons=len(srcnc[loncoord][:])
+    map_vals=np.zeros((nlats,nlons))*np.nan
+    for ipoint in range(len(classification_vector)):
+        ilat=np.where(srcnc[latcoord][:] == timeseries_lat[ipoint])
+        ilon=np.where(srcnc[loncoord][:] == timeseries_lon[ipoint])
+        map_vals[ilat,ilon]=float(classification_vector[ipoint])
+    #endfor
+    dstnc[varname][:,:]=map_vals[:,:]
+
+
+    srcnc.close()
+    dstnc.close()
+
+    print("Finished with file: ",output_file)
+
 #enddef

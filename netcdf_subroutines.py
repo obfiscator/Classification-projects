@@ -8,18 +8,248 @@ import numpy as np
 from datetime import date
 
 
-__latitude_names__=["latitude","lat"]
-__longitude_names__=["longitude","lon"]
+__latitude_names__=["latitude","lat","Lat"]
+__longitude_names__=["longitude","lon","Lon"]
 __time_names__=["time","Time","time_counter"]
 __veget_names__=["veget"]
 
+###### A class that holds labels we use in the VERIFY files
+class harmonized_netcdf:
+    def __init__(self):
+
+        # Required dimensions
+        self.latcoord="latitude"
+        self.loncoord="longitude"
+        self.timecoord="time"
+        self.nb2_coord="nv"
+
+        # Required variables
+        self.timebounds="time_bounds"
+
+        # Dimension information that does not change
+        self.nb2_units=''
+        self.nb2_values=[1,2]
+        self.latitude_units='degrees N'
+        self.longitude_units='degrees E'
+
+        # Time axis information
+        self.oyear=1900
+        self.omonth=1
+        self.oday=1
+        self.ounits="days"
+
+        # Dimensions which are also variables
+        self.full_units_string="{} since {}-{:02d}-{:02d}".format(self.ounits,self.oyear,self.omonth,self.oday)
+        self.timecoord_atts={'long_name':self.timecoord,'bounds':self.timebounds,'units': self.full_units_string,'calendar':'standard','axis':'T'}
+        self.timeaxis_type="f4"
+        self.latcoord_type="f4"
+        self.loncoord_type="f4"     
+
+        # time bounds information
+        self.timebounds_atts={'units':self.full_units_string,'calendar':'standard'}
+        self.timebounds_type="f4"
+        self.timebounds_dimensions=(self.timecoord, self.nb2_coord)
+
+        # Preferred units
+        self.fluxunits="kg C m-2 yr-1"
+    #enddef
+
+#endclass
+
+###### A class to hold dimension information that we will write
+# to NetCDF files
+class dimensions_class:
+
+    def __init__(self,values,name=None,units=None,atts=None,var_type=None,lcreate_var=False,lspecial_dim=''):
+        harm_netcdf=harmonized_netcdf()
+        self.lcreate_var=lcreate_var
+
+        # For some dimensions, I want to create a harmonized format.
+        # This is the best we I've found to do it and hide much of the
+        # nuts and bolts from the calling routine.
+        if lspecial_dim == "time":
+            self.units=self.check_standard_values(units,harm_netcdf.full_units_string)
+            self.atts=self.check_standard_values(atts,harm_netcdf.timecoord_atts)
+            self.var_type=self.check_standard_values(var_type,harm_netcdf.timeaxis_type)
+            self.name=self.check_standard_values(name,harm_netcdf.timecoord)
+            
+            self.values=values[:]
+
+            # Check to make sure we have some standard attributes.
+            required_atts=["units","bounds","calendar","axis"]
+            for att in required_atts:
+                if att not in self.atts.keys():
+                    print("***************************************")
+                    print("Did not find required time axis attribute {} in dimension.")
+                    print("Attribute: ",att)
+                    print("Requested attributes: ",self.atts.keys())
+                    print("***************************************")
+                    traceback.print_stack(file=sys.stdout)
+                    sys.exit(1)
+                #endif
+            #endfor
+        elif lspecial_dim == "nb2":
+            self.units=self.check_standard_values(units,harm_netcdf.nb2_units)
+            self.atts=self.check_standard_values(atts,harm_netcdf.timebounds_atts)
+            self.var_type=self.check_standard_values(var_type,harm_netcdf.timebounds_type)
+            self.name=self.check_standard_values(name,harm_netcdf.nb2_coord)
+            
+            self.values=harm_netcdf.nb2_values[:]
+
+            # No required attributes for nb2.  This is only used in the
+            # time_bounds variable, since that variable holds a lower bound
+            # and an upper bound for every time point.
+
+        elif lspecial_dim == "latitude":
+            self.units=self.check_standard_values(units,harm_netcdf.latitude_units)
+
+            self.atts=atts
+            self.var_type="f4"
+            self.name=self.check_standard_values(name,harm_netcdf.latcoord)
+            
+            self.values=values[:]
+
+        elif lspecial_dim == "longitude":
+            self.units=self.check_standard_values(units,harm_netcdf.longitude_units)
+            self.atts=atts
+            self.var_type="f4"
+            self.name=self.check_standard_values(name,harm_netcdf.loncoord)
+            
+            self.values=values[:]
+
+        else:
+            self.name=name
+            self.units=units
+            self.atts=atts
+            self.var_type=var_type
+        #endif
+
+        # Make sure the units are part of the attributes for the automation
+        # later.
+        if self.atts is None:
+            self.atts={}
+            self.atts["units"]=self.units
+        else:
+            if "units" not in self.atts.keys():
+                self.atts["units"]=self.units
+            else:
+                print("Not overwiting unit attribute.")
+                print("self.units ",self.units)
+                print("atts: ",self.atts)
+            #endif
+        #endif
+
+    #enddef
+
+    # Print out an error flag if the two values are not equal, and return
+    # one of the values depending.  This is something we do a lot in the
+    # above routines.
+    def check_standard_values(self,req_value,standard_value):
+        
+        if req_value is not None:
+            if req_value != standard_value:
+                print("--- Requesting non-standard value.")
+                print("    Value requested: ",req_value)
+                print("    Standard value: ",standard_value)
+                traceback.print_stack(file=sys.stdout)
+            #endif
+            return req_value
+        else:
+            return standard_value
+        #endif
+            
+    #enddef
+
+#endclass
+
+# Check to see if we have some things we need for the 2D file.
+# Need to have four dimensions, at least: time, lon, lat, nv
+def check_2D_file_dimensions(dimensions):
+    harm_netcdf=harmonized_netcdf()
+    required_dimensions=[harm_netcdf.timecoord,harm_netcdf.latcoord,harm_netcdf.loncoord,harm_netcdf.nb2_coord]
+    for dim in required_dimensions:
+        if dim not in dimensions.keys():
+            print("*********************************************")
+            print("I seem to be missing a dimension: ",dim)
+            print("Dimensions I have: ",dimensions.keys())
+            print("*********************************************")
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+    #endfor
+#endif
+
+###### A class to hold variable information that we will write
+# to NetCDF files
+class variables_class:
+    def __init__(self,name,values,units,dimensions,long_name,atts=None,var_type='f4'):
+        self.name=name
+        self.units=units
+        self.var_type=var_type
+        self.dimensions=dimensions
+        self.values=values
+        self.long_name=long_name
+
+        if atts is None:
+            self.atts={}
+        else:
+            self.atts=atts
+        #endif
+
+        self.check_atts("units",units)
+        self.check_atts("long_name",long_name)
+
+
+        # Take on fill value and missing value attributes.
+        if self.var_type == 'f4':
+            missing_value=netCDF4.default_fillvals['f4']
+            fillvalue=missing_value
+        else:
+            print("***********************************************")
+            print("Do not know how to select values for this var_type: ",self.var_type)
+            print("***********************************************")
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        self.check_atts("missing_value",missing_value)
+
+        # Store this seperately, since it is crashing when I try to 
+        # write the attribute dictionary
+        self.fillvalue=missing_value
+#        self.check_atts("_FillValue",fillvalue)
+
+    #enddef
+
+    # Check to see if an attribute exists.  If not, add it.  If it
+    # does, warn that we are overwriting and stop.  I'm not sure what
+    # I want to do in this case yet.  This does happen with timebounds.
+    def check_atts(self,att_name,att_value):
+        if att_value is None:
+            return
+        #endif
+
+        if att_name in self.atts.keys():
+            print("***********************************************")
+            print("Trying to overwrite an attribute in a variable.")
+            print(att_name)
+            print(self.atts.keys())
+            #traceback.print_stack(file=sys.stdout)
+            #sys.exit(1)
+        else:
+            self.atts[att_name]=att_value
+        #endif
+
+    #enddef
+
+#endclass
 
 # Find the name of the time axis.
-def find_time_coordinate_name(srcnc):
+def find_time_coordinate_name(srcnc,lcheck_units=False):
 
     global __time_names__
 
-    timecoord=find_variable(__time_names__,srcnc,True,"seconds since 1901-01-01 00:00:00",lcheck_units=False)
+    timecoord=find_variable(__time_names__,srcnc,True,"seconds since 1901-01-01 00:00:00",lcheck_units=lcheck_units)
 
     return timecoord
 #enddef
@@ -153,12 +383,12 @@ def find_variable(varnames,srcnc,is_dim,desired_units,lcheck_units=True):
         #endtry
 
         if lhave_units:
-            if unitstring != desired_units:
-                print("Our units for {} don't match!".format(actual_name))
-                print("Desired units: ",desired_units)
-                print("Actual units: ",unitstring)
-                print("in file: ",srcnc.filepath())
-                if lcheck_units:
+            if lcheck_units:
+                if unitstring != desired_units:
+                    print("Our units for {} don't match!".format(actual_name))
+                    print("Desired units: ",desired_units)
+                    print("Actual units: ",unitstring)
+                    print("in file: ",srcnc.filepath())
                     traceback.print_stack(file=sys.stdout)
                     sys.exit(1)
                 #endif
@@ -391,12 +621,12 @@ def select_data_years(input_data,input_timeaxis,desired_syear,desired_eyear,inpu
 #enddef
 
 ######
-def create_time_axis_from_netcdf(filename):
+def create_time_axis_from_netcdf(filename,lprint=True):
     srcnc = NetCDFFile(filename)
 
     timecoord=find_time_coordinate_name(srcnc)
 
-    timeaxis=time_axis(srcnc[timecoord][:],srcnc[timecoord].units)
+    timeaxis=time_axis(srcnc[timecoord][:],srcnc[timecoord].units,lprint=lprint)
 
     srcnc.close()
 
@@ -408,9 +638,15 @@ def create_time_axis_from_netcdf(filename):
 # Given a set of variables, monthly data, and metadata, create
 # a NetCDF file that conforms to VERIFY standards for country
 # total timeseries
-def create_countrytot_file(sim_params):
+def create_countrytot_file(sim_params,mask_file,ldebug=False):
 
-    output_file_name=sim_params.output_filename_base.substitute(filetype="CountryTotWithOutEEZ")
+    # This depends on the countries we have.
+    if mask_file in ["/home/dods/verify/VERIFY_INPUT/COUNTRY_MASKS/EU_16othercountries.nc"]:
+        output_file_name=sim_params.output_filename_base.substitute(filetype="CountryTotWithOutEEZGlobal")
+    else:
+        output_file_name=sim_params.output_filename_base.substitute(filetype="CountryTotWithOutEEZ")
+    #endif
+
     print("Creating the file {}".format(output_file_name))
 
     # I need to create a time axis.  I assume the incoming data is annual,
@@ -426,7 +662,7 @@ def create_countrytot_file(sim_params):
     strlength_coord=sim_params.strlen_refcoord_name
     nb2_coord=sim_params.nb2_refcoord_name
     ncountries=len(sim_params.variables_in_file[0].country_region_codes)
-    str_length=sim_params.strlen_value
+    str_length=sim_params.strlen_value    
 
     dstCT.createDimension(time_coord, None)
     dstCT.createDimension(country_coord, ncountries)
@@ -438,6 +674,7 @@ def create_countrytot_file(sim_params):
     x = dstCT.createVariable(time_coord, sim_params.timecoord_type, (time_coord))
     dstCT[time_coord].setncatts(sim_params.timecoord_atts)
     dstCT[time_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.values
+    ntimes=len(sim_params.variables_in_file[0].monthly_timeaxis.values)
 
     x = dstCT.createVariable(sim_params.timebounds_refcoord_name, sim_params.timebounds_type, sim_params.timebounds_dimensions)
     dstCT[time_bounds_coord].setncatts(sim_params.timebounds_atts)
@@ -471,7 +708,35 @@ def create_countrytot_file(sim_params):
 
         varname_class=sim_params.variables_in_file[ivar]
 
-        
+        # Do a check to make sure the data is what we expect.
+        if varname_class.monthly_data.shape[1] != ncountries:
+            print("Variable dimensions are not what we expect!")
+            print("Variable input name, output name: ",varname_class.input_varname,varname_class.output_varname)
+            print("ntimes, ncountries: ",ntimes,ncountries)
+            print("variable shape: ",varname_class.monthly_data.shape)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+        if varname_class.monthly_data.shape[0] != ntimes:
+            print("Variable dimensions are not what we expect!")
+            print("Variable input name, output name: ",varname_class.input_varname,varname_class.output_varname)
+            print("ntimes, ncountries: ",ntimes,ncountries)
+            print("variable shape: ",varname_class.monthly_data.shape)
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
+
+        if ldebug:
+            # What is the index of this region?
+            ccode_test=sim_params.debug_country
+            test_year=2010
+            cindex=varname_class.country_region_codes.index(ccode_test)
+            print("-- Data: ",varname_class.data[:,cindex])
+            years=list(range(varname_class.syear,varname_class.eyear+1))
+            yindex=years.index(test_year)
+            print("-- Data ({}): ".format(test_year),varname_class.data[yindex,cindex])
+        #endif
+
         dstCT.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,country_coord))
         dstCT[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
         dstCT[varname_class.output_varname][:,:]=varname_class.monthly_data[:,:]
@@ -553,6 +818,137 @@ def create_2D_file(sim_params):
     # And print information about missing data for regions
     sim_params.print_missing_region_information(dst2D)
 
+    dst2D.close()
+
+#enddef
+
+###########################
+# Given a set of variables, monthly data, and metadata, create
+# a NetCDF file that conforms to VERIFY standards for CountryTot
+# timeseries.
+# The input is a data array for each variable with dimensions: 
+# varname_class.monthly_data[imonth,cindex]
+#    varname_class.monthly_timeaxis
+#    cindex=varname_class.country_region_codes.index(ccode)
+def create_2Dmod_file(sim_params):
+    
+    output_file_name=sim_params.output_filename_base.substitute(filetype="2Dmod")
+    print("Creating the file {}".format(output_file_name))
+
+    # Open up the output file
+    dst2D = NetCDFFile(output_file_name,"w")
+
+    # I have four axes: time, latitude, longitude, and nb2 (for time_bounds)
+    time_coord=sim_params.time_refcoord_name
+    time_bounds_coord=sim_params.timebounds_refcoord_name
+    nb2_coord=sim_params.nb2_refcoord_name
+    # Have all the country information here
+    country_name_coord="country_name"
+    country_code_coord="country_code"
+    strlength=50
+    strlength_coord="strlength"
+    country_coord="country"
+    ncountries=sim_params.variables_in_file[0].monthly_data.shape[1]
+
+    dst2D.createDimension(time_coord, None)
+    dst2D.createDimension(nb2_coord, sim_params.nb2_value)
+    dst2D.createDimension(country_coord, ncountries)
+    dst2D.createDimension(strlength_coord, strlength)
+
+    # Now create the time and time_bounds variables and write them
+    # to the file
+    x = dst2D.createVariable(time_coord, sim_params.timecoord_type, (time_coord))
+    dst2D[time_coord].setncatts(sim_params.timecoord_atts)
+    dst2D[time_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.values
+
+    x = dst2D.createVariable(sim_params.timebounds_refcoord_name, sim_params.timebounds_type, sim_params.timebounds_dimensions)
+    dst2D[time_bounds_coord].setncatts(sim_params.timebounds_atts)
+    dst2D[time_bounds_coord][:]=sim_params.variables_in_file[0].monthly_timeaxis.timebounds_values
+
+    # Not latitude or longitude here.  But we do have country names and codes.
+    dst2D.createVariable(country_name_coord, "S1", (country_coord,strlength_coord))
+    dst2D.createVariable(country_code_coord, "S1", (country_coord,strlength_coord))
+
+    for idx in range(ncountries): 
+        ccode=sim_params.variables_in_file[0].country_region_codes[idx]
+        for jdx in range(len(ccode)):
+            dst2D.variables[country_code_coord][idx, jdx] = ccode[jdx]
+        #endfor
+               
+        cname=sim_params.variables_in_file[0].country_region_data[ccode].long_name
+        for jdx in range(len(cname)):
+            dst2D.variables[country_name_coord][idx, jdx] = cname[jdx]
+        #endfor
+
+    # add some metadata
+    
+
+    # Now we write the actual variables.  
+    for ivar in range(len(sim_params.variables_in_file)):
+
+        varname_class=sim_params.variables_in_file[ivar]
+
+        
+        dst2D.createVariable(varname_class.output_varname, varname_class.nc_type, (time_coord,country_coord))
+        dst2D[varname_class.output_varname].setncatts({"units":varname_class.output_units, "long_name":varname_class.long_name})
+        print("jiofe ",ivar,varname_class.monthly_data.shape)
+        print(len(sim_params.variables_in_file[0].monthly_timeaxis.values),ncountries)
+
+        dst2D[varname_class.output_varname][:,:]=varname_class.monthly_data[:,:]
+    #endfor
+
+    # Now print some additional meta information
+    for iinfo,cinfo in enumerate(sim_params.spatial_info):
+        attname="info{}".format(iinfo+1)
+        dst2D.setncatts({attname: cinfo})
+    #endfor
+
+    # And print information about missing data for regions
+    sim_params.print_missing_region_information(dst2D)
+
+    dst2D.close()
+
+#enddef
+
+###########################
+# Given a set of variables, dimensions, and metadata, create
+# a NetCDF file that conforms to the standards passed to the routine.
+# var_dim_metadata is something like harmonized_netcdf class
+# dimensions is something like dimensions_class
+# variables is something like variables_class
+# and global_metadata is a dictionary with attribute:string
+def create_2D_file_v2(output_file_name,dimensions,variables,global_metadata):
+
+    # Open up the output file
+    dst2D = NetCDFFile(output_file_name,"w")
+
+    # Make sure we have some things we need.
+    check_2D_file_dimensions(dimensions)
+    harm_netcdf=harmonized_netcdf()
+
+    for dim in dimensions.keys():
+        print("Creating dimension: ",dim)
+        dst2D.createDimension(dimensions[dim].name,len(dimensions[dim].values))
+        if dimensions[dim].lcreate_var:
+            x = dst2D.createVariable(dimensions[dim].name, dimensions[dim].var_type, (dim))
+            dst2D[dim].setncatts(dimensions[dim].atts)
+            dst2D[dim][:]=dimensions[dim].values
+        #endif
+
+    #endif
+
+    # Now for the variables
+    for var in variables.keys():
+        print("Creating variable: ",var)
+
+        # _FillValue causes continual problems.
+        x = dst2D.createVariable(variables[var].name, variables[var].var_type, variables[var].dimensions,fill_value=variables[var].fillvalue)
+        dst2D[var].setncatts(variables[var].atts)
+        dst2D[var][:]=variables[var].values
+
+    #endfor
+    
+    
     dst2D.close()
 
 #enddef
