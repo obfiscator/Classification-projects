@@ -33,7 +33,7 @@ class classified_pixel_information:
 #endclass
 
 class simulation_parameters:
-    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename):
+    def __init__(self, pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename,force_calendar,extract_region):
         self.pft_selected = pft_selected # Note that this is stored in
         # here with Python indexing!  So PFT6 is stored here as 5.
         self.veget_max_threshold = veget_max_threshold
@@ -43,10 +43,12 @@ class simulation_parameters:
         self.global_operation=global_operation
         self.force_annual=force_annual
         self.fix_time_axis=fix_time_axis
+        self.force_calendar=force_calendar
         self.print_all_ts=print_all_ts
         self.print_ts_region=print_ts_region
         self.supp_title_string=supp_title_string
         self.plot_points_filename=plot_points_filename
+        self.extract_region=extract_region
 
         # Based on the above, set some other flags.
 
@@ -68,6 +70,8 @@ class simulation_parameters:
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
         self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
+        # TEST TO MAKE THINGS FASTER
+        #self.variables_to_extract=[ "Areas","tair"]
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 
@@ -87,7 +91,8 @@ class simulation_parameters:
             #self.variables_to_extract=["LAI_MEAN","LAI_MAX","VEGET_MAX","IND","time_counter_bounds"]
             #self.variables_in_which_file=["stomate","stomate","stomate","stomate","stomate"]
 #            self.timeseries_variable="LAI_MEAN_GS"
-            self.timeseries_variable="LAI_MEAN"
+            #self.timeseries_variable="LAI_MEAN"
+            print("Not selecting LAI variable here.  That should be done below?")
         elif self.timeseries_flag in ("TWBR"):
             #self.variables_to_extract=["time_counter_bounds","TWBR"]
             #self.variables_in_which_file=["stomate","sechiba"]
@@ -309,13 +314,16 @@ class simulation_parameters:
 
         # This is where we put the maps of every variable that
         # we extract, in NetCDF format
-        if year_increment == 1:
-            self.condensed_nc_file_name="extracted_variables_{}{}.{}.nc".format(input_file_name_start,syear,eyear)
-        else:
-            self.condensed_nc_file_name="extracted_variables_{}{}.{}.nc".format(input_file_name_start,syear,eyear)
+        # I'm not sure why I have this if statement.
+#        if year_increment == 1:
+        region_string=self.print_ts_region.replace(",","x")
+        self.condensed_nc_file_name="extracted_variables_{}_{}{}.{}.nc".format(region_string,input_file_name_start,syear,eyear)
+#        else:
+#            self.condensed_nc_file_name="extracted_variables_{}{}.{}.nc".format(input_file_name_start,syear,eyear)
         #endif
 
-        # Figure out a window where we print timeseries
+        # Figure out a window where we print timeseries.  Notice this is
+        # also automatically set if extract_region is specified.
         self.nlat_window,self.slat_window,self.wlon_window,self.elon_window=parse_latlon_string(self.print_ts_region)
 
         # These are the time axis units we want, in case of regridding
@@ -325,7 +333,9 @@ class simulation_parameters:
         self.desired_ohour=0
         self.desired_omin=0
         self.desired_osec=0
-        self.desired_ounits="seconds"
+        ## Note that this should be the same as found in the data files
+        ## if you are forcing the time axis
+        self.desired_ounits="seconds" # seconds may be problematic for 340Y?
         if self.desired_ohour != "":
             self.desired_timeorigin="{0:04d}-{1:02d}-{2:02d} {3:02d}:{4:02d}:{5:02d}".format(self.desired_oyear,self.desired_omonth,self.desired_oday,self.desired_ohour,self.desired_omin,self.desired_osec)
         else:
@@ -357,12 +367,16 @@ class simulation_parameters:
         self.required_vars=[]
         if self.timeseries_flag == "LAI_MEAN1":
             self.required_vars=[veget_max_name,lai_mean_name]
+            self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
             self.required_vars=[veget_max_name,lai_mean_name]
+            self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN2":
             self.required_vars=[veget_max_name,lai_mean_name]
+            self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN_RMSD":
             self.required_vars=[veget_max_name,lai_mean_name]
+            self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "TWBR":
             self.required_vars=['TWBR']
         elif self.timeseries_flag == "HEIGHT":
@@ -1331,6 +1345,11 @@ def create_latlon_string(lat,lon):
 # borders of a rectangle, in degrees north and east (negative values 
 # indicate south and west)
 def parse_latlon_string(latlon_string):
+
+    if latlon_string is None:
+        print("-- Latlon string is None.  Returning None for all boundaries.")
+        return None,None,None,None
+    #endif
 
     case1_ns=re.compile('(.+)N,(.+)N,.+,.+')
     case2_ns=re.compile('(.+)S,(.+)N,.+,.+')

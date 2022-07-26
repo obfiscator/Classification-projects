@@ -1,17 +1,33 @@
 # Import from standard libraries
 from netCDF4 import Dataset as NetCDFFile
 import sys
-from netcdf_subroutines import find_orchidee_coordinate_names
 import numpy as np
 import pandas as pd
 import re
-from time_axis_manipulations import time_axis,create_annual_axis,create_monthly_axis
 import sys,traceback
+from datetime import datetime
+import time
+
+# Modules I wrote
+from time_axis_manipulations import time_axis,create_annual_axis,create_monthly_axis,create_daily_axis
+from netcdf_subroutines import find_orchidee_coordinate_names,harmonized_netcdf
+
+#####################################################################
+
+def get_debug_flags():
+    
+    # This is a flag that will print information on timing for various
+    # subroutines.
+    ldebug_time=False
+
+    return ldebug_time
+
+#enddef
 
 # This is a class to hold variable information that
 # we are extracting from many input file
 class extracted_variable_class:
-    def __init__(self, name, var_dimensions,datatype, timecoord, latcoord, loncoord, vegetcoord,nlats,nlons,nvegets):
+    def __init__(self, name, var_dimensions,datatype, timecoord, latcoord, loncoord, vegetcoord, nlats, nlons, nvegets, lats, lons, extract_region=None):
         self.dimensions = var_dimensions
         self.name=name
         self.datatype=datatype
@@ -22,6 +38,11 @@ class extracted_variable_class:
         self.nlats=nlats
         self.nlons=nlons
         self.nvegets=nvegets
+        self.lats=lats
+        self.lons=lons
+
+        # This region is a list of four numbers: lat (southern boundary), lat (northern), lon (western), lon (eastern)
+        self.extract_region=extract_region
 
     #enddef
 
@@ -39,6 +60,11 @@ class extracted_variable_class:
         #    print("Therefore, I cannot extend the timecoord.")
         #    sys.exit(1)
         #endif
+
+        # Get the extracted region
+        self.lats,self.lons,self.extract_lats,self.extract_lons=find_extracted_region(self.lats,self.lons,self.extract_region)
+        self.nlats=len(self.lats)
+        self.nlons=len(self.lons)
 
         ntimepoints=len(timeaxis)
         self.original_time_axis=timeaxis
@@ -92,8 +118,15 @@ class extracted_variable_class:
         #endif
 
     # Based on the number of timepoints desired, create an empty 
-    # array
-    def fill_data_array(self,incoming_data_array,itimepoint,jtimepoint):
+    # array.  Try passing a slice here instead of an individual time
+    # in order to make it faster.  It does!  Order of magnitude or more.
+    def fill_data_array(self,incoming_data_array,new_timeslice,old_timeslice):
+
+        ldebug_time=get_debug_flags()
+
+        if ldebug_time:
+            start_clock=time.perf_counter()
+        #endif
 
         # This depends on the dimensions of the variable.  Pick a couple
         # explicit cases and crash if it's anything else.
@@ -101,11 +134,16 @@ class extracted_variable_class:
         # Note that the incoming array is masked!  I want to convert masked values
         # to NaN
 
+        # Slicing with lists of the integers leads to strange
+        # behavior in the case of 4-D, although it seems to work
+        # fine in the others.  So convert into a slice first.
+        lat_slice=slice(self.extract_lats[0],self.extract_lats[-1]+1,1)
+        lon_slice=slice(self.extract_lons[0],self.extract_lons[-1]+1,1)
+
         if len(self.dimensions) == 4:
             if self.dimensions == (self.timecoord, self.vegetcoord, self.latcoord, self.loncoord):
                 
-
-                self.data_values[itimepoint,:,:,:]=np.ma.filled(incoming_data_array[jtimepoint,:,:,:],fill_value=np.nan)
+                self.data_values[new_timeslice,:,:,:]=np.ma.filled(incoming_data_array[old_timeslice,:,lat_slice,lon_slice],fill_value=np.nan)
 
 
             else:
@@ -117,8 +155,7 @@ class extracted_variable_class:
         elif len(self.dimensions) == 3:
             if self.dimensions == (self.timecoord, self.latcoord, self.loncoord):
 
-                
-                self.data_values[itimepoint,:,:]=np.ma.filled(incoming_data_array[jtimepoint,:,:],fill_value=np.nan)
+                self.data_values[new_timeslice,:,:]=np.ma.filled(incoming_data_array[old_timeslice,lat_slice,lon_slice],fill_value=np.nan)
 
 
             else:
@@ -131,10 +168,10 @@ class extracted_variable_class:
         elif len(self.dimensions) == 2:
             if self.dimensions == ('time_counter', 'axis_nbounds'):
 
-                self.data_values[itimepoint,:]=np.ma.filled(incoming_data_array[jtimepoint,:],fill_value=np.nan)
+                self.data_values[new_timeslice,:]=np.ma.filled(incoming_data_array[old_timeslice,:],fill_value=np.nan)
 
             elif self.dimensions == (self.latcoord, self.loncoord):
-                self.data_values[:,:]=np.ma.filled(incoming_data_array[:,:],fill_value=np.nan)
+                self.data_values[:,:]=np.ma.filled(incoming_data_array[lat_slice,lon_slice],fill_value=np.nan)
 
             else:
                 print("I cannot yet create an array with this dimension string.")
@@ -148,6 +185,11 @@ class extracted_variable_class:
             print(self.dimensions)
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
+        #endif
+
+        if ldebug_time:
+            end_clock=time.perf_counter()
+            print("Total of {:0.4f} seconds for fill_data_array.".format(end_clock-start_clock))
         #endif
 
     #enddef
@@ -269,15 +311,22 @@ class extracted_variable_class:
 
 #endclass  
 
-def extract_variables_from_file(sim_parms):
+def extract_variables_from_file(sim_params):
 
-    syear=sim_parms.syear
-    eyear=sim_parms.eyear
-    year_increment=sim_parms.year_increment
-    variables_to_extract=sim_parms.variables_to_extract
-    input_file_name_start=sim_parms.input_file_name_start
-    input_file_name_end=sim_parms.input_file_name_end
-    output_file_name=sim_parms.condensed_nc_file_name
+
+    ldebug_time=get_debug_flags()
+
+    if ldebug_time:
+        start_clock=time.perf_counter()
+    #endif
+
+    syear=sim_params.syear
+    eyear=sim_params.eyear
+    year_increment=sim_params.year_increment
+    variables_to_extract=sim_params.variables_to_extract
+    input_file_name_start=sim_params.input_file_name_start
+    input_file_name_end=sim_params.input_file_name_end
+    output_file_name=sim_params.condensed_nc_file_name
 
     extracted_variables={}
     timeaxis_values=[]
@@ -324,7 +373,7 @@ def extract_variables_from_file(sim_parms):
             if isinstance(varname,list):
                 for varname2 in varname:
 
-                    varloc=sim_parms.variables_in_which_file[varname2]
+                    varloc=sim_params.variables_in_which_file[varname2]
 
                     if varloc == "sechiba":
                         varlocation[varname2]=sechiba_file_name
@@ -333,7 +382,7 @@ def extract_variables_from_file(sim_parms):
                     #endif
                 #endif
             else:
-                varloc=sim_parms.variables_in_which_file[varname]
+                varloc=sim_params.variables_in_which_file[varname]
                 if varloc == "sechiba":
                     varlocation[varname]=sechiba_file_name
                 else:
@@ -368,6 +417,13 @@ def extract_variables_from_file(sim_parms):
         # I just need to find out how many time points we have.
 #        ntimepoints=ntimepoints+len(srcnc[timecoord][:])
         timeaxis_values=np.append(timeaxis_values,srcnc[timecoord][:])
+
+        # Also need to know the latitudes and longitudes, since we may
+        # be changing them if we just extract a region.  The new values
+        # need to be used in the extracted file.
+        old_lats=srcnc[latcoord][:]
+        old_lons=srcnc[loncoord][:]
+
         srcnc.close()
 
         # If this is the first input file, then we create our output file.
@@ -376,6 +432,11 @@ def extract_variables_from_file(sim_parms):
         # Notice that the sechiba file may not exist, and that's okay...if we have no sechiba variables.
         if iyear == syear:
 
+            # Figure out our new latitude and longitude coordinates.
+            new_lats,new_lons,rdum1,rdum2=find_extracted_region(old_lats,old_lons,[sim_params.slat_window,sim_params.nlat_window,sim_params.wlon_window,sim_params.elon_window])
+            new_nlats=len(new_lats)
+            new_nlons=len(new_lons)
+            print("jiojezf ",new_lons,new_lats)
 
             dstnc = NetCDFFile(output_file_name,"w")
 
@@ -388,22 +449,22 @@ def extract_variables_from_file(sim_parms):
                     srcnc = NetCDFFile(input_file_name,"r")
                 except:
                     if input_file_name == sechiba_file_name:
-                        if "sechiba" in sim_parms.variables_in_which_file.values():
+                        if "sechiba" in sim_params.variables_in_which_file.values():
                             print("You have requested a variable in a sechiba history file, but I cannot find")
                             print("   a file for this year!")
                             print("Variables requested: ",variables_to_extract)
-                            print("Variable location: ",sim_parms.variables_in_which_file)
+                            print("Variable location: ",sim_params.variables_in_which_file)
                             traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         else:
                             print("No sechiba file and no sechiba variables requested.  Skipping.")
                         #endif
                     else:
-                        if "stomate" in sim_parms.variables_in_which_file.values():
+                        if "stomate" in sim_params.variables_in_which_file.values():
                             print("You have requested a variable in a stomate history file, but I cannot find")
                             print("   a file for this year!")
                             print("Variables requested: ",variables_to_extract)
-                            print("Variable location: ",sim_parms.variables_in_which_file)
+                            print("Variable location: ",sim_params.variables_in_which_file)
                             traceback.print_stack(file=sys.stdout)
                             sys.exit(1)
                         else:
@@ -412,11 +473,19 @@ def extract_variables_from_file(sim_parms):
                     #endif
                 #endtry
 
-                # copy all the dimensions
                 for name, dimension in srcnc.dimensions.items():
-                    # It's possible the dimension already exists because it was in the other file
+                    # It's possible the dimension already exists because it 
+                    # was in the other file
+
                     if name not in dstnc.dimensions.keys():
-                        dstnc.createDimension(name, (len(dimension) if not dimension.isunlimited() else None))
+                        if name == latcoord:
+                            dstnc.createDimension(name, (new_nlats))
+                        elif name == loncoord:
+                            dstnc.createDimension(name, (new_nlons))
+                        else:
+                            dstnc.createDimension(name, (len(dimension) if not dimension.isunlimited() else None))
+                        #endif
+
                         
                         # If a variable exists for this dimensions, copy it
                         if name in srcnc.variables.keys():
@@ -424,10 +493,15 @@ def extract_variables_from_file(sim_parms):
                             x = dstnc.createVariable(name, variable.datatype, variable.dimensions)
                             # copy variable attributes all at once via dictionary
                             dstnc[name].setncatts(srcnc[name].__dict__)
-                            # Copy the values for all variables except the timecoord,
-                            # since that will change
-                            if name != timecoord:
+                            # Copy the values for all variables except the 
+                            # time, latitude, and longitude, since they 
+                            # may change
+                            if name not in [timecoord,latcoord,loncoord]:
                                 dstnc[name][:]=srcnc[name][:]
+                            elif name == latcoord:
+                                dstnc[name][:]=new_lats[:]
+                            elif name == loncoord:
+                                dstnc[name][:]=new_lons[:]
                             #endif
                         #endtry
                     #endtry
@@ -534,7 +608,7 @@ def extract_variables_from_file(sim_parms):
                 # Create a variable instance that I'll fill up with data
                 # later
 
-                extracted_variables[name]=extracted_variable_class(name, variable.dimensions,variable.datatype,timecoord, latcoord, loncoord, vegetcoord,len(srcnc[latcoord]),len(srcnc[loncoord]),len(srcnc[vegetcoord]))
+                extracted_variables[name]=extracted_variable_class(name, variable.dimensions,variable.datatype,timecoord, latcoord, loncoord, vegetcoord, len(srcnc[latcoord]),len(srcnc[loncoord]),len(srcnc[vegetcoord]),srcnc[latcoord][:],srcnc[loncoord][:],extract_region=[sim_params.slat_window,sim_params.nlat_window,sim_params.wlon_window,sim_params.elon_window])
 
                 # And create the variable in the file
                 x = dstnc.createVariable(name, variable.datatype, variable.dimensions)
@@ -550,6 +624,12 @@ def extract_variables_from_file(sim_parms):
 
     #endif
 
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 1.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
+
     ###### Now we need to figure out our time axis.
 
     #print("In total, we have {} time points.".format(ntimepoints))
@@ -557,24 +637,28 @@ def extract_variables_from_file(sim_parms):
     # We have a list of values and we have a units string.  Check to see what
     # kind of frequency we are dealing with.  Also do some basic checks to
     # see if the axis makes sense.
-    if sim_parms.fix_time_axis:
+    if sim_params.fix_time_axis:
         # This is used when we know we have a problem with the time axis.
         # Look at the starting date, the end date, the number of steps,
         # and the origin date and create a time axis.
         
-        # This timeseries may have messed up values, but by creating it,
-        # we can parse the time units string and figure out how to make
-        # a new one.  Most values will not be trustworthy.
-        combined_timeaxis=time_axis(timeaxis_values,time_units,lstop=False)
+        # Figure out the units that we want.  seconds don't really work
+        # with long FG1 runs of 340 years, so let's try days, since
+        # we may be doing some daily simulations.
+        harm_nc=harmonized_netcdf()
 
-        if len(timeaxis_values) == sim_parms.ntotal_data_years:
-            timeaxis_values=create_annual_axis(sim_parms.syear,sim_parms.eyear,combined_timeaxis.oyear,combined_timeaxis.omonth,combined_timeaxis.oday,combined_timeaxis.ohour,combined_timeaxis.omin,combined_timeaxis.osec,combined_timeaxis.ounits)
-        elif len(timeaxis_values) == sim_parms.ntotal_data_years*12:
-            timeaxis_values=create_monthly_axis(sim_parms.syear,sim_parms.eyear,sim_parms.desired_oyear,sim_parms.desired_omonth,sim_parms.desired_oday,sim_parms.desired_ohour,sim_parms.desired_omin,sim_parms.desired_osec,sim_parms.desired_ounits)
+        if sim_params.fix_time_axis == "annual":
+            timeaxis_values=create_annual_axis(sim_params.syear,sim_params.eyear,sim_params.desired_oyear,sim_params.desired_omonth,sim_params.desired_oday,sim_params.desired_ohour,sim_params.desired_omin,sim_params.desired_osec,sim_params.desired_ounits)
+        elif sim_params.fix_time_axis == "monthly":
+            timeaxis_values=create_monthly_axis(sim_params.syear,sim_params.eyear,sim_params.desired_oyear,sim_params.desired_omonth,sim_params.desired_oday,sim_params.desired_ohour,sim_params.desired_omin,sim_params.desired_osec,sim_params.desired_ounits)
 
+        elif sim_params.fix_time_axis == "daily":
+            # Start at noon
+            timeaxis_values=create_daily_axis(datetime(sim_params.syear,1,1,12,0,0),datetime(sim_params.eyear,12,31,23,0,0),sim_params.desired_ounits,sim_params.desired_timeunits,calendar_type=sim_params.force_calendar)
+            time_units=sim_params.desired_timeunits
         else:
-            print("Axis doesn't seem to be annual or monthly here. Not sure what to do.")
-            print("Starting year, ending year, total years: ",sim_parms.syear,sim_parms.eyear,sim_parms.ntotal_data_years)
+            print("Axis doesn't seem to be annual, monthly, or daily. Not sure what to do.")
+            print("Starting year, ending year, total years: ",sim_params.syear,sim_params.eyear,sim_params.ntotal_data_years)
             print("Length of aggregated time axis: ",len(timeaxis_values))
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
@@ -582,27 +666,44 @@ def extract_variables_from_file(sim_parms):
 
         # The calendar attribute and units may be messed up.  
         # Since I've recreated it, reset them.
-        dstnc[timecoord].setncatts({"calendar" : "GREGORIAN"})
-        dstnc[timecoord].setncatts({"units" : sim_parms.desired_timeunits})
-        dstnc[timecoord].setncatts({"time_origin" : sim_parms.desired_timeorigin})
+        if sim_params.force_calendar:
+            dstnc[timecoord].setncatts({"calendar" : sim_params.force_calendar})
+            combined_timeaxis=time_axis(timeaxis_values,time_units,calendar=sim_params.force_calendar)
+        else:
+            dstnc[timecoord].setncatts({"calendar" : "GREGORIAN"})
+            combined_timeaxis=time_axis(timeaxis_values,time_units)
+        #endif
+        dstnc[timecoord].setncatts({"units" : sim_params.desired_timeunits})
+        dstnc[timecoord].setncatts({"time_origin" : sim_params.desired_timeorigin})
 
-        combined_timeaxis=time_axis(timeaxis_values,time_units)
 
     else:
         combined_timeaxis=time_axis(timeaxis_values,time_units)
 
     #endif
 
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 2.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
+
     # Do we have the dates we expect to have?
     if combined_timeaxis.syear != syear or combined_timeaxis.eyear != eyear:
         print("Based on the command line, I expect data from year {} to {}.".format(syear,eyear))
         print("However, after looking through the data files, I found data from year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
-        if not sim_parms.fix_time_axis:
+        if sim_params.fix_time_axis is None:
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         else:
-            print("Continuing, since --fix_time_axis is set to True.")
+            print("Continuing, since --fix_time_axis is given a value.")
         #endif
+    #endif
+
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 3.".format(end_clock-start_clock))
+        start_clock=end_clock
     #endif
 
     # Now we allocate arrays to hold all of our data.
@@ -611,8 +712,17 @@ def extract_variables_from_file(sim_parms):
             continue
         #endif
         extracted_variables[name].create_data_array(combined_timeaxis.values,combined_timeaxis.timeunits)
+
+        new_lats=extracted_variables[name].lats
+        new_lons=extracted_variables[name].lons
         
     #endfor
+
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 4.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
 
     # Start over at the beginning, and take all the data from our
     # variables of interest and the time axis from each file.
@@ -640,7 +750,7 @@ def extract_variables_from_file(sim_parms):
         sechiba_file_name=re.sub("stomate","sechiba",stomate_file_name,flags=re.IGNORECASE)
         varlocation={}
         for varname in variables_to_extract:
-            varloc=sim_parms.variables_in_which_file[varname]
+            varloc=sim_params.variables_in_which_file[varname]
             if varloc == "sechiba":
                 varlocation[varname]=sechiba_file_name
             else:
@@ -678,10 +788,11 @@ def extract_variables_from_file(sim_parms):
             timecoord,latcoord,loncoord,vegetcoord=find_orchidee_coordinate_names(srcnc,check_units=False)
 
             itimestep2=newtimesteprange[0]
-            for jtimestep in range(len(srcnc[timecoord][:])):
-                extracted_variables[varname].fill_data_array(srcnc[varname][:],itimestep2,jtimestep)
-                itimestep2=itimestep2+1
-            #endfor
+
+            new_timeslice=slice(newtimesteprange[0],newtimesteprange[-1]+1,1)
+            old_timeslice=slice(0,len(srcnc[timecoord][:]),1)
+
+            extracted_variables[varname].fill_data_array(srcnc[varname][:],new_timeslice,old_timeslice)
 
             srcnc.close()
         #endfor
@@ -689,9 +800,30 @@ def extract_variables_from_file(sim_parms):
 
     #endfor
 
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 5.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
+
+    # Fill out the latitude and longitude, which may be different
+    # from the original files.
+    for name in [latcoord,loncoord]:
+        if name == latcoord:
+            dstnc[name][:]=new_lats[:]
+        else:
+            dstnc[name][:]=new_lons[:]
+        #endif
+    #endfor
+
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 6.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
 
     # Sometimes, we may want to change monthly data into annual data.  Let's check that here.
-    if sim_parms.force_annual:
+    if sim_params.force_annual:
         if combined_timeaxis.timestep == "1M":
             print("Trying to convert a monthly time axis into an annual time axis for extracted data.")
             annual_timeaxis_values=create_annual_axis(combined_timeaxis.syear,combined_timeaxis.eyear,combined_timeaxis.oyear,combined_timeaxis.omonth,combined_timeaxis.oday,combined_timeaxis.ohour,combined_timeaxis.omin,combined_timeaxis.osec,combined_timeaxis.ounits)
@@ -729,8 +861,14 @@ def extract_variables_from_file(sim_parms):
     else:
             
         print("Creating a new time axis just like the old.")
-        # This is just the same as the combined_timeaxis
-        new_timeaxis=time_axis(timeaxis_values,time_units)
+
+        if sim_params.force_calendar is not None:
+            # We have fixed the calendar here
+            new_timeaxis=time_axis(timeaxis_values,time_units,calendar=sim_params.force_calendar)
+        else:
+            # This is just the same as the combined_timeaxis
+            new_timeaxis=time_axis(timeaxis_values,time_units)
+        #endif
 
         # Write the data to a file
         for name in variables_to_extract:
@@ -743,8 +881,6 @@ def extract_variables_from_file(sim_parms):
         #endfor
 
     #endif
-   
-
 
     # Now print the time data into the destination file
     dstnc[timecoord][:]=new_timeaxis.values[:]
@@ -754,6 +890,11 @@ def extract_variables_from_file(sim_parms):
 
 #    print("ijofiez ")
 #    sys.exit(1)
+    if ldebug_time:
+        end_clock=time.perf_counter()
+        print("Total of {:0.4f} seconds for extract_variables_from_file step 7.".format(end_clock-start_clock))
+        start_clock=end_clock
+    #endif
 
     return output_file_name
 
@@ -905,3 +1046,44 @@ def read_in_extracted_timeseries():
 
 #enddef
 
+# find the latitudes and longitudes corresponding to a subset of
+# a different grid.
+def find_extracted_region(old_lats,old_lons,extract_region):
+
+    # I need to get the latitude and longitude indices to extract.
+    if extract_region is None:
+        new_lats=old_lats.copy()
+        new_lons=old_lons.copy()
+        extracted_lat_indices=list(range(len(new_lats)))
+        extracted_lon_indices=list(range(len(new_lons)))
+    else:
+        # Figure out the size of our extracted region.  Notice that
+        # we won't know the exact latitude/longitude until
+        # we actually do the extraction.
+        if extract_region[0] == extract_region[1] and extract_region[2] == extract_region[3]:
+            print("-- Extracting a single point: ",extract_region[0],extract_region[2])
+            
+            minind,minval=min(enumerate(old_lats), key=lambda x: abs(x[1]-extract_region[0]))
+            new_lats=[minval]
+            extracted_lat_indices=[minind]
+            minind,minval=min(enumerate(old_lons), key=lambda x: abs(x[1]-extract_region[2]))
+            new_lons=[minval]
+            extracted_lon_indices=[minind]
+        else:
+            print("-- Extracting a region: ",extract_region[0],extract_region[1],extract_region[2],extract_region[3])
+
+            # Return all indices between the given bounds
+            extracted_lat_indices=(old_lats <= extract_region[1]) & (old_lats >= extract_region[0])
+            extracted_lat_indices = [i for i, val in enumerate(extracted_lat_indices) if val]
+            new_lats=old_lats[extracted_lat_indices]
+            # And for the longitude
+            extracted_lon_indices=(old_lons <= extract_region[3]) & (old_lons >= extract_region[2])
+            extracted_lon_indices = [i for i, val in enumerate(extracted_lon_indices) if val]
+            new_lons=old_lons[extracted_lon_indices]
+
+        #endif
+    
+    #endif
+
+    return new_lats,new_lons,extracted_lat_indices,extracted_lon_indices
+#enddef

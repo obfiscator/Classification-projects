@@ -86,8 +86,11 @@ parser.add_argument('--force_annual', dest='force_annual', action='store',
                    default="False", 
                    help='if True/Yes/y/Y, then attempt to change the time axis to annual if it is not already.')
 parser.add_argument('--fix_time_axis', dest='fix_time_axis', action='store',
-                   default="False", 
-                   help='if True/Yes/y/Y, then attempt to create a time axis that goes from the starting date to the ending date.  Used in the case that the existing time axis is incorrect (a subroutine checks to make sure the existing time axis is always increasing in value, and if not, stops the analysis)')
+                   default=None, choices=[None,"daily","annual"] ,
+                    help='if given a value, then attempt to create a time axis that goes from the starting date to the ending date with this timestep.  Used in the case that the existing time axis is incorrect (a subroutine checks to make sure all the values are increasing, which is not the case with ORCHIDEE between subsquent history files...they reset to zero every year).')
+parser.add_argument('--force_calendar', dest='force_calendar', action='store',
+                   default="noleap", 
+                   help='if fix_time_axis is set to daily, this calendar will be used.')
 
 parser.add_argument('--extract_only', dest='extract_only', action='store',
                    default="False", 
@@ -109,6 +112,10 @@ parser.add_argument('--supp_title_string', dest='supp_title_string', action='sto
 parser.add_argument('--plot_points_from_file', dest='plot_points_filename', action='store',
                    default=None,
                     help='If this is the name of a .csv file with format Index,Latitude,Longitude, these are the points that will be plotted on the timeseries graphs.  If not specified, points are selected at random based on a clustering algorithm.')
+
+parser.add_argument('--extract_region', dest='extract_region', action='store',
+                   default=None,
+                    help='Extract variables only for a given point or region.  For a region, specify a rectangle using a format "35N,75N,-20E,40E", using negative numbers for west and south).  For a point, use the same latitude and longitude values (45.0N,45.0N,-1.0E,-1.0E).  This will override print_ts_region.')
 
 args = parser.parse_args()
 
@@ -214,15 +221,14 @@ else:
 #endif
 
 fix_time_axis=args.fix_time_axis
-if fix_time_axis.lower() in possible_true_values:
-    fix_time_axis=True
-else:
-    fix_time_axis=False
-#endif
 if fix_time_axis:
     print("Attempting to overwrite the existing time axis. (use the --fix_time_axis flag to change)")
+    print("   ",fix_time_axis)
+    force_calendar=args.force_calendar
+    print("   ",force_calendar)
 else:
     print("Leaving the time axis alone. (use the --fix_time_axis flag to change)")
+    force_calendar=None
 #endif
 
 extract_only=args.extract_only
@@ -268,6 +274,17 @@ else:
     print("Not printing all timeseries to a .csv file. (use the --print_all_timeseries to change)")
 #endif
 
+extract_region=args.extract_region
+if extract_region is not None:
+    print("Extracting just a pixel or region: ",extract_region)
+    print("   (use --extract_region to change)")
+    print("   NOTE: this overrides print_ts_region.")
+    print_ts_region=extract_region
+else:
+    print("Extracting the whole map.")
+    print("   (use --extract_region to change)")
+#endif
+
 supp_title_string=args.supp_title_string
 
 plot_points_filename=args.plot_points_filename
@@ -280,7 +297,7 @@ else:
 print("######################## END INPUT VALUES ######################")
 
 # To make things easier, pass around a stucture with simulation parameters.
-sim_params=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename)
+sim_params=simulation_parameters(pft_selected,veget_max_threshold,timeseries_flag,do_test,global_operation,force_annual,fix_time_axis,print_all_ts,print_ts_region,supp_title_string,plot_points_filename,force_calendar,extract_region)
 
 ###############################################
 

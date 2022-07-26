@@ -1,5 +1,6 @@
 # Import from standard libraries
 from netCDF4 import Dataset as NetCDFFile
+import netCDF4
 import sys,traceback
 import numpy as np
 import pandas as pd
@@ -17,11 +18,12 @@ from datetime import date,datetime,timedelta
 
 class time_axis:
     # Note that timeunits here is something like 'days since 1900-01-01'
-    def __init__(self, timeaxis_values,timeunits,lstop=True,lprint=True):
+    def __init__(self, timeaxis_values,timeunits,lstop=True,lprint=True,calendar="Gregorian"):
         self.timeunits = timeunits
         self.values = timeaxis_values
         self.ntimepoints=len(timeaxis_values)
         self.lstop=lstop
+        self.calendar=calendar
         
         # This prints information during the subroutine.  Sometimes
         # it's better to turn this off
@@ -353,20 +355,20 @@ class time_axis:
             for iyear in range(syear,22000):
                 seconds_per_day=24.0*60.0*60.0
                 if self.osec != "":
-                    print("ORIGIN ",iyear,self.oyear, self.omonth, self.oday)
+#                    print("ORIGIN ",iyear,self.oyear, self.omonth, self.oday)
                     start_year=datetime(iyear, 1, 1,0,0,0)-datetime(self.oyear, self.omonth, self.oday, self.ohour, self.omin, self.osec)
                     end_year=datetime(iyear+1, 1, 1,0,0,0)-datetime(self.oyear, self.omonth, self.oday, self.ohour, self.omin, self.osec)
-                    print("jifoew2 ||  {} || {}".format(start_year,end_year))
+#                    print("jifoew2 ||  {} || {}".format(start_year,end_year))
                 else:
-                    print("jifoew ",iyear,self.oyear, self.omonth, self.oday)
+#                    print("jifoew ",iyear,self.oyear, self.omonth, self.oday)
                     start_year=date(iyear, 1, 1)-date(self.oyear, self.omonth, self.oday)
                     end_year=date(iyear+1, 1, 1)-date(self.oyear, self.omonth, self.oday)
-                    print("jifoew2 ",start_year,end_year)
+#                    print("jifoew2 ",start_year,end_year)
                 #endif
 
                 # I cannot use the seconds attribute of datetime here, since that just gives the
                 # amount of seconds in the day.
-                print("ijfeow ",value,start_year.days*seconds_per_day)
+#                print("ijfeow ",value,start_year.days*seconds_per_day)
                 if value >= start_year.days*seconds_per_day and value <= end_year.days*seconds_per_day:
                     return int(iyear)
                 #endif
@@ -560,7 +562,6 @@ class time_axis:
 
                 else:
                     print("Don't know what this timestep is (seconds).")
-                    print(self.ounits)
                     print(self.values[1],self.values[0],time_diff)
                     traceback.print_stack(file=sys.stdout)
                     sys.exit(1)
@@ -611,7 +612,7 @@ class time_axis:
                     self.timebounds_values[itime,1]=timeend.days*24.0*60.0*60.0
                 else:
                     print("Cannot deal with this unit in calculate_timebounds!")
-                    print(ounits)
+                    print(self.ounits)
                     traceback.print_stack(file=sys.stdout)
                     sys.exit(1)
                 #endif
@@ -669,6 +670,33 @@ class time_axis:
                 #endif
             #endfor
 
+        elif self.timestep == "1D":
+
+            # The bounds will be from midnight to midnight.  This
+            # needs to be seconds, minutes, hours, or days on the units.
+            # This is a somewhat silly way to do this.
+            if self.ounits.lower() not in ["seconds","days"]:
+                print("Not sure how to deal with a 1D timestep and these units!")
+                print("Units ",self.ounits)
+                print(self.timestep)
+                traceback.print_stack(file=sys.stdout)
+                sys.exit(1)
+            #endif
+            for itime,rtime in enumerate(self.values):
+                if self.ounits.lower() == "days":
+                    self.timebounds_values[itime,0]=rtime-0.5
+                    self.timebounds_values[itime,1]=rtime+0.5
+                elif self.ounits.lower() == "seconds":
+                    self.timebounds_values[itime,0]=rtime-12.0*60.0*60.0
+                    self.timebounds_values[itime,1]=rtime+12.0*60.0*60.0
+                else:
+                    print("Cannot deal with this unit in calculate_timebounds!")
+                    print(ounits)
+                    traceback.print_stack(file=sys.stdout)
+                    sys.exit(1)
+                #endif
+            #endfor
+
         else:
 
             # Set the timebounds equal to half the distance between points.
@@ -693,10 +721,13 @@ class time_axis:
             if self.ounits.lower() == "days":
 
                 day_difference=math.floor(ndays/2.0)
+ 
+            elif self.ounits.lower() == "seconds":
 
+                day_difference=math.floor(60.0*60.0*24.0/2.0)
             else:
                 print("Cannot deal with this unit in calculate_timebounds!")
-                print(ounits)
+                print(self.ounits)
                 traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
@@ -1113,93 +1144,35 @@ class time_axis:
     # for monthly time axis.
     def calculate_year_month(self):
         if self.lprint:
-            print("Calculating year and month values.")
+            print("Calculating year and month values: ",self.calendar)
         #endif
         self.year_values=np.zeros(len(self.values),dtype=np.int32)
         self.month_values=np.zeros(len(self.values),dtype=np.int32)
 
-        # Do this more simply.  Calculate the first value,
-        # and then based on our time axis, we can
-        # fill in the rest.  This is much faster.
-        ### I was able to update the get_year and get_month
-        # routines to be faster, but giving a better first
-        # guess of the year/month.  
-#        if self.timestep in ['1M','1Y']:
-        if False:
-            self.year_values[0]=self.get_year(self.values[0])
-            self.month_values[0]=self.get_month(self.values[0])
+        for ival,rval in enumerate(self.values):
+            temp_datetime=netCDF4.num2date(rval,self.timeunits,self.calendar)
+            self.year_values[ival]=temp_datetime.year
+            self.month_values[ival]=temp_datetime.month
+        #endfor
 
-            iyear=self.year_values[0]
-            imonth=self.month_values[0]
-
-            if self.timestep == '1Y':
-                for itime,rtime in enumerate(self.values[:]):
-                    if itime == 0:
-                        continue
-                    #endif
-                    iyear=iyear+1
-                    self.year_values[itime]=iyear
-                    self.month_values[itime]=imonth
+        # If we have a monthly time axis, add an index.
+        class month_index():
+            def __init__(self):
+                self.month_index={}
+                for imonth in range(1,13):
+                    self.month_index[imonth]=None
                 #endfor
-            elif self.timestep == '1M':
-                for itime,rtime in enumerate(self.values[:]):
-                    if itime == 0:
-                        continue
-                    #endif
-                    imonth=imonth+1
-                    if imonth > 12:
-                        iyear=iyear+1
-                        imonth=1
-                    #endif
-                    self.year_values[itime]=iyear
-                    self.month_values[itime]=imonth
-                #endfor
-            #endif
+            #enddef
+        #endclass
 
-            # Check to see if the last value is correct.
-            test_year=self.get_year(self.values[-1])
-            test_month=self.get_month(self.values[-1])
-
-            if test_year != self.year_values[-1] or test_month != self.month_values[-1]:
-                print("Messed up doing the fast calculate_year_month!")
-                print(self.timestep)
-                print("Years: ",self.year_values)
-                print("Months: ",self.month_values)
-                traceback.print_stack(file=sys.stdout)
-                sys.exit(1)
-            else:
-                print("Successfully created quick month and years.")
-            #endif
-
-
-        else:
-            # Do it the slow way.
-            for itime,rtime in enumerate(self.values[:]):
-                self.year_values[itime]=self.get_year(rtime)
-                self.month_values[itime]=self.get_month(rtime)
-#                print("jfiew ",itime,self.year_values[itime],self.month_values[itime])
+        if self.timestep == '1M':
+            self.year_index={}
+            for year in set(self.year_values):
+                self.year_index[year]=month_index()
             #endfor
-
-            # If we have a monthly time axis, add an index.
-            class month_index():
-                def __init__(self):
-                    self.month_index={}
-                    for imonth in range(1,13):
-                        self.month_index[imonth]=None
-                    #endfor
-                #enddef
-            #endclass
-
-            if self.timestep == '1M':
-                self.year_index={}
-                for year in set(self.year_values):
-                    self.year_index[year]=month_index()
-                #endfor
-                for itime,rtime in enumerate(self.values[:]):
-                    self.year_index[self.year_values[itime]].month_index[self.month_values[itime]]=itime
-                #endfor
-            #endif
-
+            for itime,rtime in enumerate(self.values[:]):
+                self.year_index[self.year_values[itime]].month_index[self.month_values[itime]]=itime
+            #endfor
         #endif
 
     #enddef
@@ -1218,14 +1191,28 @@ class time_axis:
         self.day_values=np.zeros(len(self.values),dtype=np.int32)
         for itime,rtime in enumerate(self.values[:]):
             self.day_values[itime]=self.get_day(rtime,itime)
-            print("fioew ",itime,self.day_values[itime])
+#            print("--> itime, year, month, day: ",itime,self.year_values[itime],self.month_values[itime],self.day_values[itime])
         #endfor
 
+        # Throw in a quick check.
+        if self.day_values[-1] != 31:
+            print("******************************************")
+            print("Last day is not the 31st!")
+            print("Is this a normal time axis? Right now, I assume the noleap calendar.")
+            print("Last month, day: ",self.month_values[-1],self.day_values[-1])
+            print("******************************************")
+            traceback.print_stack(file=sys.stdout)
+            sys.exit(1)
+        #endif
         print("Finished calculating the days.")
 
     #enddef
 
-    def get_day(self,rtime,itime):
+    def get_day(self,rtime,itime,calendar="noleap"):
+
+#        print("Calendar: ",calendar)
+#        print("Units: ",self.ounits.lower())
+#        print("Units: ",self.timeunits)
 
         # If we have a yearly or monthly time axis, just take the 15th
         if self.timestep == "1Y":
@@ -1238,55 +1225,40 @@ class time_axis:
         #print(self.month_values)
         #print(self.year_values)
 
-        # We should already have passed through the parse_units routine that figures out the origin.
+        # We should already have passed through the parse_units routine 
+        # that figures out the origin.  I've deleted the days code,
+        # since that didn't handle calendars.  The seconds can be
+        # modified for that when it's needed.
         if self.ounits.lower() == "days":
 
-            for iday in range(1,31):
-                
-                start_date=date(iyear, imonth, iday)-date(self.oyear, self.omonth, self.oday)
-                # The ending date might be in the next month or next year
-                try:
-                    end_date=date(iyear, imonth, iday+1)-date(self.oyear, self.omonth, self.oday)
-                except:
-                    try:
-                        end_date=date(iyear, imonth+1, 1)-date(self.oyear, self.omonth, self.oday)
-                    except:
-                        try:
-                            end_date=date(iyear+1, 1, 1)-date(self.oyear, self.omonth, self.oday)
-                        except:
-                            print("No idea how to deal with this!")
-                            print("iyear,imonth,iday: ",iyear,imonth,iday)
-                            traceback.print_stack(file=sys.stdout)
-                            sys.exit(1)
-                        #endtry
-                    #endtry
-                #endtry
-
-#                print("rtime ",rtime,start_date.days,end_date.days)
-#                print("rtime ",iday,iyear,imonth)
-                if rtime >= start_date.days and rtime <= end_date.days:
-                    return int(iday)
-                #endif
-            #endfor
-
-            print("I did not find a day for ",rtime)
+            
+            print("*************************")
+            print("Copy this from seconds when needed.")
+            print("*************************")
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
 
-        # How does this look for seconds?  Similar, I should think.
+        # How does this look for seconds?  Similar, I should think.  Using
+        # the netCDF4 package, the calendar can be taken into account
+        # more easily.
         elif self.ounits.lower() == "seconds":
+
             for iday in range(1,32):
-                
-                start_date=date(iyear, imonth, iday)-date(self.oyear, self.omonth, self.oday)
-                # The ending date might be in the next month or next year
+                    
                 try:
-                    end_date=date(iyear, imonth, iday+1)-date(self.oyear, self.omonth, self.oday)
+                    start_time=netCDF4.date2num(datetime(iyear, imonth, iday,0,0,0),self.timeunits,calendar=calendar)
+                except:
+                    continue
+                #endif
+
+                try:
+                    end_time=netCDF4.date2num(datetime(iyear, imonth, iday+1,0,0,0),self.timeunits,calendar=calendar)
                 except:
                     try:
-                        end_date=date(iyear, imonth+1, 1)-date(self.oyear, self.omonth, self.oday)
+                        end_time=netCDF4.date2num(datetime(iyear, imonth+1, 1,0,0,0),self.timeunits,calendar=calendar)
                     except:
                         try:
-                            end_date=date(iyear+1, 1, 1)-date(self.oyear, self.omonth, self.oday)
+                            end_time=netCDF4.date2num(datetime(iyear+1, 1, 1,0,0,0),self.timeunits,calendar=calendar)
                         except:
                             print("No idea how to deal with this!")
                             print("iyear,imonth,iday: ",iyear,imonth,iday)
@@ -1295,17 +1267,20 @@ class time_axis:
                         #endtry
                     #endtry
                 #endtry
-                sec_per_day=60.0*60.0*24.0
-                start_seconds=start_date.days*sec_per_day
-                end_seconds=end_date.days*sec_per_day
-#                print("rtime ",rtime,start_seconds,end_seconds)
-#                print("rtime ",iday,iyear,imonth)
-                if rtime >= start_seconds and rtime <= end_seconds:
+
+                if rtime >= start_time and rtime <= end_time:
                     return int(iday)
                 #endif
+
             #endfor
 
+
+            print("*******************************")
             print("I did not find a day for ",rtime)
+            print("Units: ",self.timeunits)
+            print("This may happen if you have leap years, since by ")
+            print("default I only use noleap.  Needs to be corrected.")
+            print("*******************************")
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         else:
@@ -1430,40 +1405,39 @@ def create_annual_axis(syear,eyear,oyear,omonth,oday,ohour,omin,osec,ounits):
 # on an origin year and units given by the caller.  This also depends on
 # a calendar time.
 # start_date and end_date are datetime objects.
-# Right now, I ignore the calendar.  :(
-def create_daily_axis(start_date,end_date,oyear,omonth,oday,ohour,omin,osec,ounits,calendar_type='Gregorian'):
+def create_daily_axis(start_date,end_date,ounits,timeunits,calendar_type='Gregorian'):
 
-    timediff=end_date-start_date
-    ndays=timediff.days+1
-    print("We have {} days.".format(ndays))
-    daily_timeaxis_values=np.zeros((ndays))*np.nan
+    daily_timeaxis_values=[]
 
-    seconds_per_day=24.0*60.0*60.0
-    current_date=start_date
+    # This doesn't take into account different calendars
+    #timediff=end_date-start_date
+    #ndays=timediff.days+1
+    #print("We have {} days.".format(ndays))
+    #daily_timeaxis_values=np.zeros((ndays))*np.nan
+    ######
 
-    for iday in range(ndays):
-        if ounits.lower() == "days":
-            timediff=current_date-date(oyear, omonth, oday)
-            daily_timeaxis_values[iday]=timediff.days
-        elif ounits.lower() == "seconds":
-            if osec != "":
-                timediff=current_date-datetime(oyear, omonth, oday, ohour, omin, osec)
-                daily_timeaxis_values[iday]=timediff.days*seconds_per_day+timediff.seconds
-            else:
-                timediff=current_date-date(oyear, omonth, oday)
-                daily_timeaxis_values[iday]=timediff.days*seconds_per_day
-            #endif
+    if ounits.lower() == "days":
+        timestep=1.0
+    elif ounits.lower() == "seconds":
+        timestep=24.0*60.0*60.0
+    else:
+        print("Cannot deal with this unit in create_daily_axis!")
+        print(ounits)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
 
-        else:
-            print("Cannot deal with this unit in create_daily_axis!")
-            print(ounits)
-            traceback.print_stack(file=sys.stdout)
-            sys.exit(1)
+    current_date=netCDF4.date2num(start_date,timeunits,calendar=calendar_type)
+
+    # I can't believe appending a list this many times is fast...but hopefully
+    # it works.
+    while True:
+        if current_date > netCDF4.date2num(end_date,timeunits,calendar=calendar_type):
+            break
         #endif
-
-        current_date=current_date+timedelta(days=1)
-
-    #endfor
+        daily_timeaxis_values.append(current_date)
+        current_date=current_date+timestep
+    #endwhile
 
     return daily_timeaxis_values
 
