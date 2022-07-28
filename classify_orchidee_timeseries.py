@@ -86,8 +86,8 @@ parser.add_argument('--force_annual', dest='force_annual', action='store',
                    default="False", 
                    help='if True/Yes/y/Y, then attempt to change the time axis to annual if it is not already.')
 parser.add_argument('--fix_time_axis', dest='fix_time_axis', action='store',
-                   default=None, choices=[None,"daily","annual"] ,
-                    help='if given a value, then attempt to create a time axis that goes from the starting date to the ending date with this timestep.  Used in the case that the existing time axis is incorrect (a subroutine checks to make sure all the values are increasing, which is not the case with ORCHIDEE between subsquent history files...they reset to zero every year).')
+                   default=None, choices=[None,"daily","monthly","annual"] ,
+                    help='if given a value, then attempt to create a time axis that goes from the starting date to the ending date with this timestep.  Used in the case that the existing time axis is incorrect (a subroutine checks to make sure all the values are increasing, which is not the case with ORCHIDEE between subsquent history files...they reset to zero every year).  NOTE: if used with --force_annual, the value of --fix_time_axis should be that of the original data.')
 parser.add_argument('--force_calendar', dest='force_calendar', action='store',
                    default="noleap", 
                    help='if fix_time_axis is set to daily, this calendar will be used.')
