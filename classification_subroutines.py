@@ -71,7 +71,7 @@ class simulation_parameters:
         # of simulations.
         self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
         # TEST TO MAKE THINGS FASTER
-        #self.variables_to_extract=[ "Areas","tair"]
+        self.variables_to_extract=[ "Areas","tair",["LAI_MEAN","LAI"]]
         #self.variables_to_extract=[ "TWBR"]
         # not sure what to do with time_counter_bounds.  I am trying to always create it myself.
 

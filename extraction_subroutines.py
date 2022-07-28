@@ -436,7 +436,6 @@ def extract_variables_from_file(sim_params):
             new_lats,new_lons,rdum1,rdum2=find_extracted_region(old_lats,old_lons,[sim_params.slat_window,sim_params.nlat_window,sim_params.wlon_window,sim_params.elon_window])
             new_nlats=len(new_lats)
             new_nlons=len(new_lons)
-            print("jiojezf ",new_lons,new_lats)
 
             dstnc = NetCDFFile(output_file_name,"w")
 
@@ -886,6 +885,32 @@ def extract_variables_from_file(sim_params):
     dstnc[timecoord][:]=new_timeaxis.values[:]
     dstnc[timebounds_varname][:]=new_timeaxis.timebounds_values[:]
         
+    # Due to changing regions, this seems like the best place to do this.
+    # I would like the latitudes to always be ascending, and the longitudes
+    # to always go from -180 to 180.  Check for this and correct if needed.
+    if dstnc[latcoord][1]-dstnc[latcoord][0] < 0.0:
+        print("Inverted latitude coordinates.")
+        dstnc[latcoord][:]=np.flip(dstnc[latcoord][:])
+        for varname in dstnc.variables.keys():
+            if varname == latcoord:
+                continue
+            #endif
+            if latcoord in dstnc[varname].dimensions:
+                print("Changing latcoord for: ",varname)
+                axis_flip=dstnc[varname].dimensions.index(latcoord)
+                dstnc[varname][:]=np.flip(dstnc[varname][:],axis=axis_flip)
+            #endif
+        #endfor
+    #endif
+
+    if np.max(dstnc[loncoord][:]) > 180.0:
+        print("****************************************************")
+        print("-------> Seems like longitudes are not what I want.")
+        print("     Need to write this, as I'm not sure how the data may look.")
+        print("****************************************************")
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
     dstnc.close()
 
 #    print("ijofiez ")
