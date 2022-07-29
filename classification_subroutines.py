@@ -356,9 +356,10 @@ class simulation_parameters:
         # But in theory they measure the same thing.
         srcnc = NetCDFFile(self.condensed_nc_file_name,"r")
         veget_max_name=find_variable(["VEGET_MAX","VEGET_COV_MAX"],srcnc,False,"",lcheck_units=False)
+        # It's probably more accurate to compare LAI to LAI_MEAN.
         lai_mean_name=find_variable(["LAI","LAI_MEAN"],srcnc,False,"",lcheck_units=False)
-        # This is for the growing season
-        lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
+        #lai_mean_name=find_variable(["LAI","LAI_MEAN_GS"],srcnc,False,"",lcheck_units=False)
+        ######
         lai_max_name=find_variable(["LAI","LAI_MAX"],srcnc,False,"",lcheck_units=False)
         self.set_variable_names(veget_max_name,lai_mean_name,lai_max_name)
 
