@@ -2275,7 +2275,14 @@ def create_netcdf_classification_map(classification_vector,timeseries_lat,timese
         sys.exit(1)
     #endif
 
-    for varname in sim_params.required_vars:
+    try:
+        timebounds_name=srcnc[timecoord].bounds
+        copy_variables=sim_params.required_vars + [timebounds_name]
+    except:
+        copy_variables=sim_params.required_vars
+    #endtry
+
+    for varname in copy_variables:
         for dim in srcnc[varname].dimensions:
             if dim not in dimensions_needed and dim != vegetcoord:
                 print("Keeping dimension: ",varname,dim)
@@ -2292,8 +2299,9 @@ def create_netcdf_classification_map(classification_vector,timeseries_lat,timese
 
     # Create all the variables, including dimension variables.
     # If there is a PFT dimension, eliminate it.
+
     for name, variable in srcnc.variables.items():
-        if name in dimensions_needed or name in sim_params.required_vars:
+        if name in dimensions_needed or name in copy_variables:
             if vegetcoord in variable.dimensions:
                 dimensions=list(variable.dimensions)
                 dimensions.remove(vegetcoord)

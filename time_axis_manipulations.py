@@ -294,6 +294,12 @@ class time_axis:
     # Figure out what year a particular value is in for this time axis
     def get_year(self,value):
 
+        # Can I do this more easily with the NetCDF routines?
+        temp_datetime=netCDF4.num2date(value,self.timeunits,self.calendar)
+        print("teofiejwoe ",temp_datetime.year)
+        return int(temp_datetime.year)
+
+        ################## NOT USED
         # We should already have passed through the parse_units routine that figures out the origin.
         if self.ounits.lower() == "days":
 
@@ -387,6 +393,7 @@ class time_axis:
 
         traceback.print_stack(file=sys.stdout)
         sys.exit(1)
+        ################## NOT USED
 
     #enddef
 

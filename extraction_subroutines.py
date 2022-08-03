@@ -196,8 +196,9 @@ class extracted_variable_class:
 
     def regrid_time_axis(self,new_time_axis_values,new_time_axis_units):
 
+        error_message="Problem in regrid_time_axis"
         if new_time_axis_units != self.timeunits:
-            print("I cannot yet change units while regridding in regrid_time_axis.")
+            print(error_message)
             print("Old time units: ",self.timeunits)
             print("New time units: ",new_time_axis_units)
             traceback.print_stack(file=sys.stdout)
@@ -208,10 +209,17 @@ class extracted_variable_class:
         old_timeaxis=time_axis(self.original_time_axis,self.timeunits)
         regridded_timeaxis=time_axis(new_time_axis_values,new_time_axis_units)
 
-        if old_timeaxis.ntimepoints / regridded_timeaxis.ntimepoints != 12:
-            print("Can only do monthly to annual time axis regridding right now.")
+        # For the moment, I only regrid values which are an exact divisor
+        # of the total number of points (such as monthly to annual, or
+        # noleap daily to annual).
+        if old_timeaxis.ntimepoints % regridded_timeaxis.ntimepoints == 0:
+            condense_period=int(old_timeaxis.ntimepoints / regridded_timeaxis.ntimepoints)
+        else:
+            print(error_message)
+            print("Can only do certain annual time axis regridding right now.")
             print("Old number of points: ",old_timeaxis.ntimepoints)
             print("New number of points: ",regridded_timeaxis.ntimepoints)
+            print("Modulus: ",old_timeaxis.ntimepoints % regridded_timeaxis.ntimepoints)
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
         #endif
@@ -231,15 +239,15 @@ class extracted_variable_class:
         if len(self.dimensions) == 4:
             if self.dimensions == (self.timecoord, self.vegetcoord, self.latcoord, self.loncoord):
 
-                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of condense_period.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
-                self.regridded_data_values=np.reshape(self.data_values[:,:,:,:], (-1, 12, self.data_values.shape[1],self.data_values.shape[2],self.data_values.shape[3]))
+                self.regridded_data_values=np.reshape(self.data_values[:,:,:,:], (-1, condense_period, self.data_values.shape[1],self.data_values.shape[2],self.data_values.shape[3]))
                 if self.time_aggregation_operation=="ave":
                     self.regridded_data_values=np.mean(self.regridded_data_values,axis=1)
                 #endif
 
             else:
-                print("I cannot yet fill an array with this dimension string.")
+                print(error_message)
                 print(self.dimensions)
                 traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
@@ -247,9 +255,9 @@ class extracted_variable_class:
         elif len(self.dimensions) == 3:
             if self.dimensions == (self.timecoord, self.latcoord, self.loncoord):
 
-                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of condense_period.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
-                self.regridded_data_values=np.reshape(self.data_values[:,:,:], (-1, 12, self.data_values.shape[1],self.data_values.shape[2]))
+                self.regridded_data_values=np.reshape(self.data_values[:,:,:], (-1, condense_period, self.data_values.shape[1],self.data_values.shape[2]))
                 if self.time_aggregation_operation=="ave":
                     self.regridded_data_values=np.mean(self.regridded_data_values,axis=1)
                 #endif
@@ -273,7 +281,7 @@ class extracted_variable_class:
 
 
             else:
-                print("I cannot yet fill an array with this dimension string.")
+                print(error_message)
                 print(self.dimensions)
                 traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
@@ -282,9 +290,9 @@ class extracted_variable_class:
         elif len(self.dimensions) == 2:
             if self.dimensions == ('time_counter', 'axis_nbounds'):
 
-                # A nice way to take the average across groups of 12.  Reshape the array, adding a new
+                # A nice way to take the average across groups of condense_period.  Reshape the array, adding a new
                 # axis, and then take the mean of that axis.
-                self.regridded_data_values=np.reshape(self.data_values[:,:], (-1, 12, self.data_values.shape[1]))
+                self.regridded_data_values=np.reshape(self.data_values[:,:], (-1, condense_period, self.data_values.shape[1]))
                 if self.time_aggregation_operation=="ave":
                     self.regridded_data_values=np.mean(self.regridded_data_values,axis=1)
                 #endif
@@ -294,14 +302,14 @@ class extracted_variable_class:
                 self.regridded_data_values=self.data_values[:,:]
 
             else:
-                print("I cannot yet create an array with this dimension string.")
+                print(error_message)
                 print(self.dimensions)
                 traceback.print_stack(file=sys.stdout)
                 sys.exit(1)
             #endif
 
         else:
-            print("I cannot yet fill an array with this dimension string.")
+            print(error_message)
             print(self.dimensions)
             traceback.print_stack(file=sys.stdout)
             sys.exit(1)
@@ -687,15 +695,22 @@ def extract_variables_from_file(sim_params):
         start_clock=end_clock
     #endif
 
+    ##### I'm not sure why we don't crash here.  With fix_time_axis, this
+    ##### should be corrected at this stage.
+
     # Do we have the dates we expect to have?
     if combined_timeaxis.syear != syear or combined_timeaxis.eyear != eyear:
         print("Based on the command line, I expect data from year {} to {}.".format(syear,eyear))
-        print("However, after looking through the data files, I found data from year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
-        if sim_params.fix_time_axis is None:
-            traceback.print_stack(file=sys.stdout)
-            sys.exit(1)
+        if sim_params.fix_time_axis is not None:
+            print("However, after fixing the time axis, I have year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
         else:
-            print("Continuing, since --fix_time_axis is given a value.")
+            print("However, after looking through the data files, I found data from year {} to {}.".format(combined_timeaxis.syear,combined_timeaxis.eyear))
+        #endif
+        print("--> I made a mistake. Stopping.")
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+#        else:
+#            print("Continuing, since --fix_time_axis is given a value.")
         #endif
     #endif
 
@@ -829,6 +844,11 @@ def extract_variables_from_file(sim_params):
             
             new_timeaxis=time_axis(annual_timeaxis_values,time_units)
 
+        elif combined_timeaxis.timestep == "1D":
+            print("Trying to convert a daily time axis into an annual time axis for extracted data.")
+            annual_timeaxis_values=create_annual_axis(combined_timeaxis.syear,combined_timeaxis.eyear,combined_timeaxis.oyear,combined_timeaxis.omonth,combined_timeaxis.oday,combined_timeaxis.ohour,combined_timeaxis.omin,combined_timeaxis.osec,combined_timeaxis.ounits)
+            
+            new_timeaxis=time_axis(annual_timeaxis_values,time_units)
             
         else:
             print("Requested to convert a monthly time axis into an annual time axis for extracted data, but data is not monthly!")
