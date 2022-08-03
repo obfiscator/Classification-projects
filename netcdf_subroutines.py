@@ -10,7 +10,7 @@ from datetime import date
 
 __latitude_names__=["latitude","lat","Lat"]
 __longitude_names__=["longitude","lon","Lon"]
-__time_names__=["time","Time","time_counter"]
+__time_names__=["time","Time","time_counter","mon","year"]
 __veget_names__=["veget"]
 
 ###### A class that holds labels we use in the VERIFY files
@@ -632,6 +632,86 @@ def create_time_axis_from_netcdf(filename,lprint=True):
 
     return timeaxis
 
+#enddef
+
+################################
+# Verify some attributes about a NetCDF file for VERIFY.
+# This used to be found in explore_epic_subroutines.py
+###############################
+def verify_file(src,cflag,lcheck_units=True):
+
+    # for each file time, we need to check different things.
+    latitude_names=["latitude","lat"]
+    longitude_names=["longitude","lon"]
+    time_names=["time","Time","time_counter"]
+    countrycoords=["country"]
+    countrynames=["country_name"]
+    countrycodes=["country_code"]
+    countrymasks=["country_mask"]
+
+    # Fix the time coord
+    if cflag.lower() == "cropland_area":
+        areanames=["CROPLAND_AREA"]
+        timecoord=find_variable(time_names,src,True,"days since 1900-01-01")
+        loncoord=find_variable(longitude_names,src,True,"degrees_east")
+        latcoord=find_variable(latitude_names,src,True,"degrees_north")
+        areaname=find_variable(areanames,src,False,"m2")
+
+        #surfaceareanames=["SURFACE_AREA"]
+        #surfaceareaname=find_variable(surfaceareanames,src,False,"m2")
+        surfaceareaname=""
+
+        return timecoord,latcoord,loncoord,areaname,surfaceareaname
+     
+    elif cflag.lower() == "grassland_area":
+        areanames=["GRASSLAND_AREA"]
+        timecoord=find_variable(time_names,src,True,"days since 1900-01-01")
+        loncoord=find_variable(longitude_names,src,True,"degrees_east")
+        latcoord=find_variable(latitude_names,src,True,"degrees_north")
+        areaname=find_variable(areanames,src,False,"m2")
+
+        #surfaceareanames=["SURFACE_AREA"]
+        #surfaceareaname=find_variable(surfaceareanames,src,False,"m2")
+        surfaceareaname=""
+
+        return timecoord,latcoord,loncoord,areaname,surfaceareaname
+     
+    elif cflag.lower() == "area":
+        timecoord=find_variable(time_names,src,True,"days since 1900-01-01")
+        loncoord=find_variable(longitude_names,src,True,"degrees_east")
+        latcoord=find_variable(latitude_names,src,True,"degrees_north")
+
+        surfaceareanames=["SURFACE_AREA"]
+        surfaceareaname=find_variable(surfaceareanames,src,False,"m2")
+
+        return timecoord,latcoord,loncoord,surfaceareaname
+     
+    elif cflag.lower() == "mask":
+        loncoord=find_variable(longitude_names,src,True,"",lcheck_units=lcheck_units)
+        latcoord=find_variable(latitude_names,src,True,"",lcheck_units=lcheck_units)
+        countrycoord=find_variable(countrycoords,src,True,"",lcheck_units=lcheck_units)
+        countryname=find_variable(countrynames,src,False,"",lcheck_units=lcheck_units)
+        countrycode=find_variable(countrycodes,src,False,"",lcheck_units=lcheck_units)
+        countrymask=find_variable(countrymasks,src,False,"",lcheck_units=lcheck_units)
+        return latcoord,loncoord,countrycoord,countryname,countrycode,countrymask
+
+    elif cflag.lower() == "latlontime":
+        timecoord=find_variable(time_names,src,True,"days since 1900-01-01")
+        loncoord=find_variable(longitude_names,src,True,"degrees_east")
+        latcoord=find_variable(latitude_names,src,True,"degrees_north")
+        return latcoord,loncoord,timecoord
+
+    elif cflag.lower() == "latlon":        
+        loncoord=find_variable(longitude_names,src,True,"degrees_east")
+        latcoord=find_variable(latitude_names,src,True,"degrees_north")
+        return latcoord,loncoord
+
+    else:
+        print("Do not recognize flag in verify_file!")
+        print(cflag)
+        traceback.print_stack(file=sys.stdout)
+        sys.exit(1)
+    #endif
 #enddef
 
 ###########################
