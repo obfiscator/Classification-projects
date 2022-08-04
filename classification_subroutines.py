@@ -1260,10 +1260,10 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
         all_timeseries[ipoint,0]=timeseries_lat[ipoint]
         all_timeseries[ipoint,1]=timeseries_lon[ipoint]
         all_timeseries[ipoint,2]=classification_vector[ipoint]
-        timeseriesdf=pd.DataFrame(data=all_timeseries,columns=columnnnames)
-        timeseriesdf.to_csv(path_or_buf="all_classified_points_{}.csv".format(sim_params.cmap_identifier),sep=",")
-
     #endfor
+    timeseriesdf=pd.DataFrame(data=all_timeseries,columns=columnnnames)
+    timeseriesdf.to_csv(path_or_buf="all_classified_points_{}.csv".format(sim_params.cmap_identifier),sep=",")
+
     ######
 
 
