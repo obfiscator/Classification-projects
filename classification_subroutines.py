@@ -69,7 +69,13 @@ class simulation_parameters:
         # If a variable is not found, skip it.  Extracting variables takes
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
+        #self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
+
+        # For CRUERA, daily output for ten years, I'm trying to find the
+        # minimum set of values I need for the analysis, since it appears
+        # to be having memory issues.
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["VEGET_MAX","VEGET_COV_MAX"],"tair","swdown","rain","snowf","Areas","CONTFRAC"]
+
         # TEST TO MAKE THINGS FASTER
         #self.variables_to_extract=[ "Areas","tair",["LAI_MEAN","LAI"]]
         #self.variables_to_extract=[ "TWBR"]
@@ -367,25 +373,25 @@ class simulation_parameters:
         # Check that we have all the variables that we need.
         self.required_vars=[]
         if self.timeseries_flag == "LAI_MEAN1":
-            self.required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name,"CONTFRAC","Areas"]
             self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN_BIMODAL":
-            self.required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name,"CONTFRAC","Areas"]
             self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN2":
-            self.required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name,"CONTFRAC","Areas"]
             self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "LAI_MEAN_RMSD":
-            self.required_vars=[veget_max_name,lai_mean_name]
+            self.required_vars=[veget_max_name,lai_mean_name,"CONTFRAC","Areas"]
             self.timeseries_variable=lai_mean_name
         elif self.timeseries_flag == "TWBR":
-            self.required_vars=['TWBR']
+            self.required_vars=['TWBR',"CONTFRAC","Areas"]
         elif self.timeseries_flag == "HEIGHT":
-            self.required_vars=['HEIGHT','IND','RECRUITS_IND']
+            self.required_vars=['HEIGHT','IND','RECRUITS_IND',"CONTFRAC","Areas"]
         elif self.timeseries_flag == "N_RESERVES":
-            self.required_vars=[veget_max_name,"RESERVE_M_n","LABILE_M_n","RESERVE_M_c","LABILE_M_c","SAP_M_AB_c","SAP_M_BE_c"]
+            self.required_vars=[veget_max_name,"RESERVE_M_n","LABILE_M_n","RESERVE_M_c","LABILE_M_c","SAP_M_AB_c","SAP_M_BE_c","CONTFRAC","Areas"]
         elif self.timeseries_flag == "TOTAL_M_c":
-            self.required_vars=['TOTAL_M_c']
+            self.required_vars=['TOTAL_M_c',"CONTFRAC","Areas"]
         else:
             print("Do not recognize timeseries flag in set_classification_filename_information!")
             print(self.timeseries_flag)
@@ -1260,11 +1266,10 @@ def plot_classified_observations(classification_vector,timeseries_array,timeseri
         all_timeseries[ipoint,0]=timeseries_lat[ipoint]
         all_timeseries[ipoint,1]=timeseries_lon[ipoint]
         all_timeseries[ipoint,2]=classification_vector[ipoint]
-        timeseriesdf=pd.DataFrame(data=all_timeseries,columns=columnnnames)
-        timeseriesdf.to_csv(path_or_buf="all_classified_points_{}.csv".format(sim_params.cmap_identifier),sep=",")
-
     #endfor
     ######
+    timeseriesdf=pd.DataFrame(data=all_timeseries,columns=columnnnames)
+    timeseriesdf.to_csv(path_or_buf="all_classified_points_{}.csv".format(sim_params.cmap_identifier),sep=",")
 
 
     #####
