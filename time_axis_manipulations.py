@@ -296,7 +296,6 @@ class time_axis:
 
         # Can I do this more easily with the NetCDF routines?
         temp_datetime=netCDF4.num2date(value,self.timeunits,self.calendar)
-        print("teofiejwoe ",temp_datetime.year)
         return int(temp_datetime.year)
 
         ################## NOT USED
