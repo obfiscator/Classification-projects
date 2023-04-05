@@ -17,7 +17,7 @@ from scipy.stats import pearsonr
 
 # Import from local routines myself and colleagues have written
 from grid import Grid
-from netcdf_subroutines import find_orchidee_coordinate_names,find_variable
+from netcdf_subroutines import find_orchidee_coordinate_names,find_variable,harmonized_netcdf
 
 ###################################
 
@@ -69,12 +69,12 @@ class simulation_parameters:
         # If a variable is not found, skip it.  Extracting variables takes
         # a long time, so I don't want to have to redo it for every type
         # of simulations.
-        #self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf"]
+        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["LAI_MEAN_GS","LAI"], ["LAI_MAX","LAI"],["VEGET_MAX","VEGET_COV_MAX"],"IND","TWBR","LABILE_M_n","RESERVE_M_n","NPP","GPP","NBP_pool","Areas","CONTFRAC","LEAF_AGE_CRIT","LEAF_AGE","LEAF_TURN_c","LAI_MEAN_GS","FRUIT_M_c","WSTRESS_SEASON","LEAF_M_MAX_c",'LEAF_TURN_AGEING_c',"LABILE_M_c","RESERVE_M_c","SAP_M_AB_c","SAP_M_BE_c","TOTAL_M_c","HEIGHT_DOM","RECRUITS_IND","tair","swdown","rain","snowf","RDI","RDI_TARGET_LOWER","RDI_TARGET_UPPER"]
 
         # For CRUERA, daily output for ten years, I'm trying to find the
         # minimum set of values I need for the analysis, since it appears
         # to be having memory issues.
-        self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["VEGET_MAX","VEGET_COV_MAX"],"tair","swdown","rain","snowf","Areas","CONTFRAC"]
+        #self.variables_to_extract=[ ["LAI_MEAN","LAI"], ["VEGET_MAX","VEGET_COV_MAX"],"tair","swdown","rain","snowf","Areas","CONTFRAC"]
 
         # TEST TO MAKE THINGS FASTER
         #self.variables_to_extract=[ "Areas","tair",["LAI_MEAN","LAI"]]
@@ -91,7 +91,7 @@ class simulation_parameters:
 #        self.variables_to_extract=[ ["VEGET_MAX","VEGET_COV_MAX"],"SAP_M_AB","SAP_M_BE","HEART_M_AB","HEART_M_BE","TOTAL_SOIL_CARB","TOTAL_BM_LITTER","LITTER_STR_AB","LITTER_MET_AB","LITTER_STR_BE","LITTER_MET_BE","WOOD_HARVEST_PFT"]
         #####################
 
-        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB_c":"stomate","SAP_M_BE_c":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate","RESERVE_M_c":"stomate","LABILE_M_c":"stomate","TOTAL_M_c" : "stomate","HEIGHT_DOM" : "stomate","RECRUITS_IND" : "stomate","tair" : "sechiba", "swdown" : "sechiba", "rain" : "sechiba", "snowf" : "sechiba"}
+        self.variables_in_which_file={"LAI_MEAN":"stomate","LAI_MAX":"stomate","LAI" : "stomate","VEGET_MAX":"stomate","VEGET_COV_MAX":"stomate","IND":"stomate","TWBR":"sechiba","SAP_M_AB_c":"stomate","SAP_M_BE_c":"stomate","HEART_M_AB":"stomate","HEART_M_BE":"stomate","TOTAL_SOIL_CARB" : "stomate","TOTAL_BM_LITTER":"stomate","LITTER_STR_AB":"stomate","LITTER_MET_AB":"stomate","LITTER_STR_BE":"stomate","LITTER_MET_BE":"stomate","PROD10":"stomate","PROD100":"stomate","PROD10_HARVEST":"stomate","PROD100_HARVEST":"stomate","WOOD_HARVEST_PFT":"stomate","RESERVE_M_n":"stomate","LABILE_M_n":"stomate", "LAI_MEAN_GS":"stomate","NPP":"stomate","GPP":"stomate","NBP_pool":"stomate","Areas":"stomate","CONTFRAC":"stomate","LEAF_AGE_CRIT":"stomate","LEAF_AGE":"stomate","LEAF_TURN_c":"stomate","LAI_MEAN_GS":"stomate","FRUIT_M_c":"stomate","WSTRESS_SEASON":"stomate","LEAF_M_MAX_c":"stomate",'LEAF_TURN_AGEING_c':"stomate","RESERVE_M_c":"stomate","LABILE_M_c":"stomate","TOTAL_M_c" : "stomate","HEIGHT_DOM" : "stomate","RECRUITS_IND" : "stomate","tair" : "sechiba", "swdown" : "sechiba", "rain" : "sechiba", "snowf" : "sechiba", "RDI": "stomate","RDI_TARGET_LOWER": "stomate","RDI_TARGET_UPPER": "stomate"}
 
         if self.timeseries_flag in ("LAI_MEAN1","LAI_MEAN2","LAI_MEAN_BIMODAL","LAI_MEAN_RMSD"):
             #self.variables_to_extract=["LAI_MEAN","LAI_MAX","VEGET_MAX","IND","time_counter_bounds"]
@@ -333,9 +333,11 @@ class simulation_parameters:
         self.nlat_window,self.slat_window,self.wlon_window,self.elon_window=parse_latlon_string(self.print_ts_region)
 
         # These are the time axis units we want, in case of regridding
-        self.desired_oyear=1901
-        self.desired_omonth=1
-        self.desired_oday=1
+        harm_nc=harmonized_netcdf()
+
+        self.desired_oyear=harm_nc.oyear
+        self.desired_omonth=harm_nc.omonth
+        self.desired_oday=harm_nc.oday
         self.desired_ohour=0
         self.desired_omin=0
         self.desired_osec=0

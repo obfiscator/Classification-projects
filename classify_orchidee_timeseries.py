@@ -145,6 +145,9 @@ elif timeseries_flag == "N_RESERVES":
 elif timeseries_flag == "TOTAL_M_c":
     print("Extracting the timeseries for the total carbon biomass, and classyfing the timeseries only on them.  Checking for accumulating biomass over hundreds of years, as pixels should in theory reach maximum biomass in 300 years or so (use the --classification flag to change)")
 
+elif timeseries_flag == "multiplate_stable_states_tbmc":
+    print("Extracting the timeseries for the total carbon biomass, and classyfing the timeseries only on them.  Check for sudden jumps in the timeseries, indicating the presense of multiple stable states (use the --classification flag to change)")
+
 elif timeseries_flag == "HEIGHT":
     print("Extracting the timeseries for the vegetation height, and classyfing the timeseries only on them.  Checking for frequent drops of vegetation height back to some initial value, which suggests frequent die-offs (use the --classification flag to change)")
 

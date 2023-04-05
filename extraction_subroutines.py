@@ -10,7 +10,7 @@ import time
 
 # Modules I wrote
 from time_axis_manipulations import time_axis,create_annual_axis,create_monthly_axis,create_daily_axis
-from netcdf_subroutines import find_orchidee_coordinate_names,harmonized_netcdf
+from netcdf_subroutines import find_orchidee_coordinate_names
 
 #####################################################################
 
@@ -652,17 +652,18 @@ def extract_variables_from_file(sim_params):
         # Figure out the units that we want.  seconds don't really work
         # with long FG1 runs of 340 years, so let's try days, since
         # we may be doing some daily simulations.
-        harm_nc=harmonized_netcdf()
+        time_units=sim_params.desired_timeunits
 
         if sim_params.fix_time_axis == "annual":
+            print("--> Fixing an annual timeaxis: ",sim_params.syear,sim_params.eyear,sim_params.desired_oyear,sim_params.desired_omonth,sim_params.desired_oday,sim_params.desired_ohour,sim_params.desired_omin,sim_params.desired_osec,sim_params .desired_ounits)
             timeaxis_values=create_annual_axis(sim_params.syear,sim_params.eyear,sim_params.desired_oyear,sim_params.desired_omonth,sim_params.desired_oday,sim_params.desired_ohour,sim_params.desired_omin,sim_params.desired_osec,sim_params.desired_ounits)
+            print("Timeaxis values: ",timeaxis_values/24/60/60)
         elif sim_params.fix_time_axis == "monthly":
             timeaxis_values=create_monthly_axis(sim_params.syear,sim_params.eyear,sim_params.desired_oyear,sim_params.desired_omonth,sim_params.desired_oday,sim_params.desired_ohour,sim_params.desired_omin,sim_params.desired_osec,sim_params.desired_ounits)
 
         elif sim_params.fix_time_axis == "daily":
             # Start at noon
             timeaxis_values=create_daily_axis(datetime(sim_params.syear,1,1,12,0,0),datetime(sim_params.eyear,12,31,23,0,0),sim_params.desired_ounits,sim_params.desired_timeunits,calendar_type=sim_params.force_calendar)
-            time_units=sim_params.desired_timeunits
         else:
             print("Axis doesn't seem to be annual, monthly, or daily. Not sure what to do.")
             print("Starting year, ending year, total years: ",sim_params.syear,sim_params.eyear,sim_params.ntotal_data_years)
