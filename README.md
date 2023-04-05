@@ -16,3 +16,7 @@ classify_orchidee_timeseries.py
 This project creates so-called "stoplight" plots.  Taking a gridded history file from ORCHIDEE output, it extracts variables of interest, and classifies the timeseries of each pixel based on a set of user-defined criteria.  For example, a green pixel may have 80% of annual leaf area index (LAI) values above a value of 4.0 and less than 1% of annual LAI values as NaN.  The script creates maps and outputs example timeseries from each color (dark green, light green, yellow, orange, and red) to show the user the results of the classification.
 
 The rest of the files are modules called by the above two projects.
+
+An example of how to extract variables from ORCHIDEE output files without running a classification analysis.  The ORCHIDEE output files need to be in the same directory that this command is executed in.
+
+python Classification-projects.DEV/classify_orchidee_timeseries.py --input_file_string FG1.REVLAT.r7931_,_1Y_stomate_history.nc --data_years \"1901,2240\" --year_increment 1 --fix_time_axis annual --extract_only True
